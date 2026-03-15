@@ -1,0 +1,249 @@
+---
+title: "Models"
+description: "Define Eloquent-style models that map PHP classes to database tables and provide built-in CRUD, search, and pagination."
+---
+
+A model is a PHP class that extends `libs\DB\Model` and represents a single database table. Models give you static and instance methods for creating, reading, updating, and deleting records without writing SQL.
+
+## Creating a model
+
+```bash
+php manager new model Post
+```
+
+This generates `app/Models/Post.php`:
+
+```php
+<?php
+
+namespace app\Models;
+
+use libs\DB\Model;
+
+class Post extends Model{
+    
+    protected $table = "post";
+    protected $fillable = [
+        
+    ];
+
+}
+```
+
+## Model properties
+
+<CardGroup cols={2}>
+  <Card title="$table" icon="table">
+    The database table this model reads from and writes to.
+  </Card>
+  <Card title="$primary_key" icon="key">
+    The primary key column name. Defaults to `"id"`.
+  </Card>
+  <Card title="$fillable" icon="pencil">
+    Columns that `create()` and `save()` are allowed to write. The primary key is always included automatically.
+  </Card>
+  <Card title="$busable" icon="magnifying-glass">
+    Columns searched by `search()`. Defaults to `$fillable` when not set.
+  </Card>
+  <Card title="$hidden" icon="eye-off">
+    Columns removed from model instances after a query. Useful for passwords.
+  </Card>
+  <Card title="$visible" icon="eye">
+    Columns that override `$hidden`. A column in both `$hidden` and `$visible` will be shown.
+  </Card>
+</CardGroup>
+
+### Complete model example
+
+```php
+<?php
+
+namespace app\Models;
+
+use libs\DB\Model;
+
+class User extends Model{
+
+    protected $table       = "user";
+    protected $primary_key = "id";
+    protected $fillable    = ["name", "email", "password"];
+    protected $busable     = ["name", "email"];
+    protected $hidden      = ["password"];
+    protected $visible     = [];
+
+}
+```
+
+## CRUD operations
+
+### Retrieve all records
+
+```php
+$users = User::all(); // array of User instances
+```
+
+### Find by primary key
+
+```php
+$user = User::find(1);         // first() — single User or null
+$users = User::find(1, null, []); // get() — array when third arg is array
+```
+
+You can also find by a specific column:
+
+```php
+$user = User::find('alice@example.com', 'email');
+```
+
+Or use a closure for complex lookups:
+
+```php
+$user = User::find(function ($query) {
+    $query->where('email', 'alice@example.com')->where('verified_email_at', null);
+});
+```
+
+### Create a record
+
+`create()` accepts an associative array, filters it through `$fillable`, inserts the row, and returns the populated model instance.
+
+```php
+$user = User::create([
+    'name'     => 'Alice',
+    'email'    => 'alice@example.com',
+    'password' => password_hash('secret', PASSWORD_BCRYPT),
+]);
+
+echo $user->id; // last insert ID
+```
+
+`created_at` is set automatically; `updated_at` is left `null`.
+
+### Update a record
+
+Call `update()` on a model instance with the columns to change:
+
+```php
+$user = User::find(1);
+$user->update(['name' => 'Bob']);
+```
+
+`updated_at` is set automatically.
+
+### Save
+
+`save()` inserts the record if the primary key is absent or the row does not exist in the database, otherwise it updates:
+
+```php
+$user = new User();
+$user->name  = 'Charlie';
+$user->email = 'charlie@example.com';
+$user->save();
+```
+
+### Delete
+
+```php
+$user = User::find(1);
+$user->delete(); // returns true on success
+```
+
+## Query modifiers
+
+These chainable methods filter or transform the result set before it is fetched. They can be called statically (they forward to a `Table` instance internally).
+
+### where / select / orderBy
+
+All `Table` query-builder methods are available on models:
+
+```php
+$active = User::where('verified_email_at', '!=', null)
+              ->orderBy('name', 'ASC')
+              ->get();
+```
+
+### search()
+
+Searches across all columns listed in `$busable` using `LIKE`, chaining each column with `OR`:
+
+```php
+$results = User::search('alice')->get();
+// SELECT ... WHERE `name` LIKE '%alice%' OR `email` LIKE '%alice%'
+```
+
+Passing `null` or an empty string returns the model unchanged so you can safely pass request input directly.
+
+### paginate()
+
+Returns a `Paginator` object with the sliced data and metadata:
+
+```php
+$page    = $_GET['page'] ?? 1;
+$result  = User::paginate(15, $page);
+```
+
+The `Paginator` exposes:
+
+| Property | Type | Description |
+|---|---|---|
+| `$data` | array | Model instances for the current page |
+| `$current_page` | int | Current page number |
+| `$results_per_page` | int | Items per page |
+| `$total_results` | int | Total rows in the table |
+| `$total_pages` | int | Total number of pages |
+| `$links` | array | Navigation link objects with `label`, `value`, `active` |
+| `$info` | string | Localised pagination summary string |
+
+You can also apply query conditions before paginating:
+
+```php
+$result = User::search($query)->paginate(10, $page);
+```
+
+### random()
+
+Fetches one or more random records:
+
+```php
+$user  = User::random();    // single User instance
+$users = User::random(5);   // array of 5 User instances
+```
+
+### with()
+
+Eager-loads one or more relations onto each result, preventing N+1 queries:
+
+```php
+$posts = Post::with('author', 'tags')->get();
+```
+
+You can also attach arbitrary key-value pairs to every result:
+
+```php
+$posts = Post::with(['is_featured' => true])->get();
+```
+
+Nested relations are supported with dot notation:
+
+```php
+$users = User::with('posts.comments')->get();
+```
+
+### hidden() / visible()
+
+Add or override hidden columns at query time without changing the model class:
+
+```php
+$users = User::hidden('email')->get();    // hide email for this query
+$users = User::visible('password')->get(); // un-hide password for this query
+```
+
+### each()
+
+Runs a closure against every model instance after it is hydrated:
+
+```php
+$users = User::each(function ($user) {
+    $user->display_name = strtoupper($user->name);
+})->get();
+```

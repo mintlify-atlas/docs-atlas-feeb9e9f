@@ -1,0 +1,127 @@
+---
+title: "Seeders"
+description: "Populate your database with test or default data using seeder classes and the built-in Faker helper."
+---
+
+Seeders are PHP classes that extend `libs\DB\Seeder`. They insert rows into your database tables, either with hardcoded values or randomly generated data from the built-in `Faker` helper.
+
+## Creating a seeder
+
+```bash
+php manager new seeder UserSeeder
+```
+
+This generates `database/seeders/UserSeeder.php`:
+
+```php
+<?php
+
+namespace database\seeders;
+
+use libs\DB\Seeder;
+use app\Models\User;
+
+class UserSeeder extends Seeder{
+
+    public function run(){
+        User::create([
+            
+        ]);
+    }
+
+}
+```
+
+## Running seeders
+
+```bash
+php manager seeder
+```
+
+This calls `DatabaseSeeder::run()`, which is the single entry point that dispatches to every individual seeder.
+
+## DatabaseSeeder
+
+`database/seeders/DatabaseSeeder.php` is the main seeder. Add each seeder class to the `call()` array to run it:
+
+```php
+<?php
+
+namespace database\seeders;
+
+use libs\DB\Seeder;
+
+class DatabaseSeeder extends Seeder{
+
+    public function run(){
+        $this->call([
+            \database\seeders\UserSeeder::class,
+            \database\seeders\PostSeeder::class,
+        ]);
+    }
+
+}
+```
+
+`call()` instantiates each class in order and calls its `run()` method, printing the class name to the console.
+
+## Using Faker
+
+`Seeder` extends `libs\Middle\Faker`, which exposes a `$this->faker` property. Use it to generate realistic test data:
+
+```php
+public function run(){
+    for ($i = 0; $i < 50; $i++) {
+        Post::create([
+            'title'   => $this->faker->sentence,
+            'body'    => $this->faker->paragraphs(3, true),
+            'author'  => $this->faker->name,
+            'email'   => $this->faker->email,
+        ]);
+    }
+}
+```
+
+## Real example
+
+The default `UserSeeder` creates a fixed admin account and then 10 random users:
+
+```php
+<?php
+
+namespace database\seeders;
+
+use libs\DB\Seeder;
+use libs\Middle\Secure;
+use app\Models\User;
+
+class UserSeeder extends Seeder{
+
+    public function run(){
+        // Fixed admin account
+        User::create([
+            'name'     => 'admin',
+            'email'    => 'admin@gmail.com',
+            'password' => Secure::encodePassword('123'),
+        ]);
+
+        // 10 random users
+        for ($index = 0; $index < 10; $index++) {
+            User::create([
+                'name'     => $this->faker->name,
+                'email'    => $this->faker->email,
+                'password' => Secure::encodePassword('123'),
+            ]);
+        }
+    }
+
+}
+```
+
+<Note>
+Seeders call model methods directly, so `$fillable` and all other model rules apply. Make sure the columns you pass to `create()` are listed in the model's `$fillable` array.
+</Note>
+
+<Warning>
+Running seeders multiple times may create duplicate rows. Add existence checks or truncate tables before seeding in production environments.
+</Warning>

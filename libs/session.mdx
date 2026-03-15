@@ -1,0 +1,209 @@
+---
+title: "Sessions & Cookies"
+description: "Manage server-side sessions and browser cookies using the Session and Cookie classes."
+---
+
+## Sessions
+
+The `Session` class (`libs\Session\Session`) is a singleton that stores per-user state on the server. Sessions can be persisted to the file system or a database table, controlled by `config/session.php`.
+
+### Getting the instance
+
+```php
+use libs\Session\Session;
+
+$session = Session::singleton();
+```
+
+Inside a controller you can also use the global helper:
+
+```php
+$session = session();
+```
+
+### Reading and writing values
+
+```php
+// Write a value
+$session->put('user_id', 42);
+
+// Read a value (returns null if not set)
+$userId = $session->get('user_id');
+
+// Check existence
+if ($session->has('user_id')) {
+    // ...
+}
+
+// Read all session values
+$all = $session->all();
+```
+
+### Removing values
+
+```php
+// Remove one key
+$session->forget('user_id');
+
+// Read and immediately remove
+$value = $session->pull('notice');
+
+// Clear all values (keeps the session alive)
+$session->flush();
+
+// Destroy the session entirely
+$session->destroy();
+```
+
+### Flash messages
+
+Flash messages are short-lived values that survive exactly one request — store them before a redirect, then read and remove them on the next page load.
+
+```php
+// Before redirecting
+$session->put('flash.success', 'Profile updated successfully.');
+return $response->redirect('/profile');
+
+// On the next request — use pull() so it is removed after reading
+$message = $session->pull('flash.success');
+```
+
+<Tip>
+Use namespaced keys like `flash.success`, `flash.error`, and `flash.warning` to keep flash data organised in your views.
+</Tip>
+
+### Session ID and token
+
+```php
+// Current session ID
+$id = $session->id();
+
+// CSRF token (also available via the global helper)
+$token = Session::token();
+$token = csrfToken();
+
+// Regenerate the session ID (e.g. after login)
+$session->regenerate();
+```
+
+### Session methods reference
+
+| Method | Description |
+|--------|-------------|
+| `put(string $name, mixed $value)` | Store a value |
+| `get(string $name): mixed` | Read a value |
+| `has(string $name): bool` | Check if a key exists |
+| `all(): array` | Return all session data |
+| `forget(string $name)` | Remove a key |
+| `pull(string $name): mixed` | Read and remove a key |
+| `flush()` | Remove all keys |
+| `destroy()` | Delete the session entirely |
+| `regenerate()` | Issue a new session ID |
+| `token(bool $regenerate = false): string` | Get (or regenerate) the CSRF token |
+| `id(): string` | Current session ID |
+| `isStarted(): bool` | Whether the session has started |
+
+## Configuration
+
+Session settings live in `config/session.php` and are controlled by environment variables.
+
+```php
+// config/session.php
+return [
+    'driver'  => env('SESSION_DRIVER', 'database'), // 'file' or 'database'
+    'encrypt' => env('SESSION_ENCRYPT', false),
+
+    'file' => [
+        'path' => env('SESSION_PATH', storagePath('framework/sessions')),
+    ],
+
+    'database' => [
+        'table' => env('SESSION_TABLE', 'session'),
+    ],
+
+    'cookie' => [
+        'name'     => env('SESSION_COOKIE_NAME', 'SESSION_PHP'),
+        'lifetime' => env('SESSION_COOKIE_LIFETIME', 120), // minutes
+        'path'     => env('SESSION_COOKIE_PATH', '/'),
+        'domain'   => env('SESSION_COOKIE_DOMAIN', null),
+        'secure'   => env('SESSION_COOKIE_SECURE', false),
+        'httponly' => env('SESSION_COOKIE_HTTPONLY', true),
+        'samesite' => env('SESSION_COOKIE_SAMESITE', 'Lax'),
+    ],
+];
+```
+
+<CardGroup cols={2}>
+  <Card title="File driver" icon="file">
+    Sessions are stored as serialized files in `storage/framework/sessions/`. Suitable for single-server deployments.
+  </Card>
+  <Card title="Database driver" icon="database">
+    Sessions are stored in a `session` table. Required for multi-server deployments. The table needs `id`, `ip_address`, `user_agent`, `payload`, and `last_activity` columns.
+  </Card>
+</CardGroup>
+
+## Cookies
+
+The `Cookie` class (`libs\Cookie\Cookie`) provides a static interface for reading and writing browser cookies. Settings such as lifetime, path, and `SameSite` are pulled from `config/session.php` automatically.
+
+### Writing a cookie
+
+```php
+use libs\Cookie\Cookie;
+
+// Uses defaults from config/session.php
+Cookie::set('theme', 'dark');
+
+// With a custom expiry (Unix timestamp)
+Cookie::set('remember_token', $token, time() + 60 * 60 * 24 * 30);
+```
+
+### Reading and deleting
+
+```php
+// Read a cookie value
+$theme = Cookie::get('theme');
+
+// Check existence
+if (Cookie::exists('theme')) {
+    // ...
+}
+
+// Read all cookies
+$all = Cookie::all();
+
+// Delete a cookie
+Cookie::delete('theme');
+```
+
+### Cookie method signature
+
+```
+Cookie::set(
+    string $name,
+    mixed  $value,
+    int    $expires  = null,  // Defaults to config lifetime in minutes
+    string $path     = null,  // Defaults to config cookie.path
+    string $domain   = null,  // Defaults to config cookie.domain
+    bool   $secure   = null,  // Defaults to config cookie.secure
+    bool   $httponly = null,  // Defaults to config cookie.httponly
+    string $samesite = null   // Defaults to config cookie.samesite
+): bool
+```
+
+### Accessing cookies from `Request`
+
+You can also reach a `Cookie` instance through the incoming request object:
+
+```php
+public function index($request, $response)
+{
+    $cookie = $request->cookie();
+    $theme  = $cookie->get('theme');
+    // ...
+}
+```
+
+<Warning>
+Cookies written on the same request are available immediately through `Cookie::get()` because the class updates `$_COOKIE` in-process. However, they are only persisted to the browser after the HTTP response is sent.
+</Warning>

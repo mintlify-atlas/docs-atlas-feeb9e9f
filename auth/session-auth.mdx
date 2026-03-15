@@ -1,0 +1,209 @@
+---
+title: "Session Authentication"
+description: "Implement login, logout, and route protection using the DB-based session authentication driver."
+---
+
+Session authentication is the default mode for browser-facing routes. The `AuthDB` driver stores the authenticated user's primary key in the session and looks it up on each request.
+
+## Prerequisites
+
+Make sure the `StartSession` middleware runs before any route that uses `Auth`. It is typically registered globally:
+
+```php
+// app/Middlewares registration
+use libs\Session\Middleware\StartSession;
+```
+
+The session driver is configured in `config/session.php`. Both `file` and `database` drivers are supported.
+
+## Core methods
+
+### attempt()
+
+Validates credentials against the `web.model` configured in `config/auth.php`. Pass every column you want to match plus a `password` key:
+
+```php
+$success = Auth::attempt([
+    'email'    => $request->input('email'),
+    'password' => $request->input('password'),
+]);
+```
+
+`attempt()` runs a query for all non-password fields, then calls `Secure::verifyPassword()` on the result. It calls `Auth::login()` internally on success and returns `true`. Returns `false` on failure.
+
+### login()
+
+Log in a user object directly — useful after registration or OAuth flows:
+
+```php
+$user = User::find($id);
+Auth::login($user);
+```
+
+This writes the user's primary key to the session under the key defined by `session.id_user` (default: `auth`). If the session driver is `database`, it also updates the `id_user` column on the session row.
+
+### logout()
+
+```php
+Auth::logout();
+```
+
+Removes the `auth` session key. If the session driver is `database`, it sets `id_user` to `null` on the session row. The session itself is not destroyed — call `Session::destroy()` if you need a full reset.
+
+### user()
+
+Return the currently authenticated model:
+
+```php
+$user = Auth::user(); // returns User model or null
+```
+
+On first call within a request the user is fetched from the database using the ID stored in the session. Subsequent calls return the cached model.
+
+### check()
+
+Return `true` if a user is authenticated:
+
+```php
+if (Auth::check()) {
+    // authenticated
+}
+```
+
+### id()
+
+Return the authenticated user's primary key without loading the full model:
+
+```php
+$id = Auth::id();
+```
+
+## Protecting routes with middleware
+
+Two auth middlewares are included out of the box.
+
+### Authenticate
+
+Redirects unauthenticated requests to the `login` named route:
+
+```php
+// app/Middlewares/Authenticate.php
+class Authenticate extends Middleware {
+    public function handle(Request $request, \Closure $next) {
+        if (!Auth::check()) {
+            return redirect(route('login'));
+        }
+        return $next($request);
+    }
+}
+```
+
+Apply it to any route or route group in your router:
+
+```php
+$router->get('/dashboard', [DashboardController::class, 'index'])
+       ->middleware(Authenticate::class);
+```
+
+### Guest
+
+Redirects already-authenticated users to the `home` named route — use this on login/register pages:
+
+```php
+// app/Middlewares/Guest.php
+class Guest extends Middleware {
+    public function handle(Request $request, \Closure $next) {
+        if (Auth::check()) {
+            return redirect(route('home'));
+        }
+        return $next($request);
+    }
+}
+```
+
+## Example: login controller
+
+The following example shows a complete login flow using `Auth::attempt()`, redirect on success, and validation error handling:
+
+```php
+namespace app\Controllers;
+
+use libs\Auth\Auth;
+use libs\HTTP\Request;
+use libs\HTTP\Response;
+
+class AuthController {
+
+    public function showLogin(Request $request, Response $response) {
+        return view('auth.login');
+    }
+
+    public function login(Request $request, Response $response) {
+        $credentials = [
+            'email'    => $request->input('email'),
+            'password' => $request->input('password'),
+        ];
+
+        if (Auth::attempt($credentials)) {
+            return redirect(route('dashboard'));
+        }
+
+        return redirect(route('login'))->with('error', 'Invalid credentials.');
+    }
+
+    public function logout(Request $request, Response $response) {
+        Auth::logout();
+        return redirect(route('login'));
+    }
+
+}
+```
+
+<Steps>
+  <Step title="User submits the login form">
+    The form POSTs `email` and `password` to the `login` route.
+  </Step>
+  <Step title="Auth::attempt() validates credentials">
+    The driver queries the `users` table by email, then verifies the password hash. On success it writes the user ID to the session.
+  </Step>
+  <Step title="Redirect on result">
+    A successful attempt redirects to the dashboard. A failed attempt redirects back to the login page with an error flash.
+  </Step>
+  <Step title="Auth::logout() clears the session">
+    Calling `Auth::logout()` removes the user ID from the session and redirects back to the login page.
+  </Step>
+</Steps>
+
+## Accessing the authenticated user in views and controllers
+
+Once logged in, `Auth::user()` is available anywhere in the request lifecycle:
+
+```php
+$user = Auth::user();
+echo $user->name;
+
+// Check before accessing
+if (Auth::check()) {
+    $user = Auth::user();
+}
+```
+
+<Warning>
+  `Auth::user()` returns `null` when no user is authenticated. Always guard with `Auth::check()` before accessing user properties.
+</Warning>
+
+## Session storage
+
+The session state is managed by `libs\Session\Session`. The `StartSession` middleware starts the session on every request:
+
+```php
+// libs/Session/Middleware/StartSession.php
+class StartSession extends Middleware {
+    public function handle(Request $request, Closure $next) {
+        Session::singleton()->start();
+        return $next($request);
+    }
+}
+```
+
+When the session driver is set to `database`, `AuthDB` also writes the `id_user` column on the session row so you can query active sessions directly from the `sessions` table.

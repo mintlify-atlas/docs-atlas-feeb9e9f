@@ -1,0 +1,176 @@
+---
+title: "Validation"
+description: "Validate incoming request data using the built-in Validate class and a fluent rule syntax."
+---
+
+The `Validate` class (`libs\Validator\Validate`) validates an associative array of values against a set of rules. It returns a `Validation` object that lets you check for errors and read sanitized values.
+
+## Basic usage
+
+```php
+use libs\Validator\Validate;
+
+$validation = Validate::make($request->all(), [
+    'name'  => 'required',
+    'email' => 'required|email',
+    'age'   => 'nullable|integer|min:18',
+]);
+
+if ($validation->fails()) {
+    return $response->json(['errors' => $validation->errors()], 422);
+}
+
+$name = $validation->get('name');
+```
+
+## `Validate::make()`
+
+```
+Validate::make(array $values, array $rules): Validation
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `$values` | `array` | Key-value pairs to validate (e.g. `$request->all()`) |
+| `$rules` | `array` | Map of field names to pipe-separated rule strings |
+
+## Rule syntax
+
+Rules are written as a pipe-separated string. Rules that accept parameters use a colon, and multiple parameters are comma-separated.
+
+```
+'field' => 'required|min:3|max:255'
+'other' => 'nullable|in:foo,bar,baz'
+```
+
+### Built-in rules
+
+Built-in rules live under `libs\Validator\Rules\` and are loaded automatically by class name. The framework converts `snake_case` rule names to `PascalCase` class names.
+
+| Rule | Example | Description |
+|------|---------|-------------|
+| `required` | `required` | Value must be present and non-empty |
+| `nullable` | `nullable` | If the value is empty, skip remaining rules and set the field to `null` |
+| `email` | `email` | Must be a valid email address format |
+| `integer` | `integer` | Must be an integer |
+| `min` | `min:3` | Minimum length (string) or minimum value (number) |
+| `max` | `max:255` | Maximum length (string) or maximum value (number) |
+| `in` | `in:a,b,c` | Value must be one of the given comma-separated options |
+
+<Note>
+Rule class files are resolved from `libs\Validator\Rules\{PascalCase}`. You can add custom rule classes there or register them with the `Validator` singleton (see [Custom rules](#custom-rules)).
+</Note>
+
+## The `Validation` object
+
+`Validate::make()` always returns a `Validation` instance regardless of whether validation passed or failed.
+
+```
+$validation->fails(): bool          // true when any field has errors
+$validation->errors(): array        // ['field' => ['Error message', ...]]
+$validation->values(): array        // All validated (and sanitized) values
+$validation->get(string $key): mixed  // Single validated value, or null
+$validation->set(string $key, mixed $value): Validation  // Override a value
+```
+
+## Checking results
+
+```php
+$validation = Validate::make($request->all(), [
+    'username' => 'required|min:3|max:32',
+    'password' => 'required|min:8',
+]);
+
+if ($validation->fails()) {
+    // Return all field errors as JSON
+    return $response->json([
+        'message' => 'Validation failed',
+        'errors'  => $validation->errors(),
+    ], 422);
+}
+
+// Access individual values
+$username = $validation->get('username');
+$password = $validation->get('password');
+```
+
+## Custom error messages
+
+Validation error messages are sourced from language files at `resources/lang/{locale}/validation.php`. Each key matches a rule name and may use `:key` as a placeholder for the field name.
+
+```php
+// resources/lang/en/validation.php
+return [
+    'required' => 'The :key field is required.',
+    'email'    => 'The :key field must be a valid email address.',
+    'min'      => 'The :key field must be at least :0 characters.',
+];
+```
+
+Field label translations live in `resources/lang/{locale}/attributes.php`:
+
+```php
+// resources/lang/en/attributes.php
+return [
+    'email'    => 'email address',
+    'username' => 'username',
+];
+```
+
+## Custom rules
+
+You can register a custom rule at runtime using the `Validator` singleton.
+
+<Steps>
+  <Step title="Get the Validator singleton">
+    ```php
+    use libs\Validator\Validator;
+
+    $validator = Validator::singleton();
+    ```
+  </Step>
+  <Step title="Register a rule">
+    Call `_make()` with a rule key and a closure. The closure receives `($key, $value, $allValues, $params)` and must return `true` when the value passes.
+
+    ```php
+    $validator->_make('phone', function ($key, $value, $array, $params) {
+        return preg_match('/^\+?[0-9]{7,15}$/', $value) === 1;
+    });
+    ```
+  </Step>
+  <Step title="Use the rule in validation">
+    ```php
+    $validation = Validate::make($request->all(), [
+        'phone' => 'required|phone',
+    ]);
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Custom rules registered via `Validator::singleton()` must have a corresponding message key in `resources/lang/{locale}/validation.php`, otherwise the error message will fall back to the raw key name.
+</Warning>
+
+## Integration with `Request`
+
+Pass `$request->all()` or `$request->input()` directly as the values array:
+
+```php
+public function store($request, $response)
+{
+    $validation = Validate::make($request->all(), [
+        'title'   => 'required|max:200',
+        'body'    => 'required',
+        'status'  => 'required|in:draft,published',
+    ]);
+
+    if ($validation->fails()) {
+        return $response->json(['errors' => $validation->errors()], 422);
+    }
+
+    // $validation->values() contains only the fields listed above
+    Post::create($validation->values());
+
+    return $response->json(['message' => 'Created'], 201);
+}
+```

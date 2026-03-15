@@ -1,0 +1,125 @@
+---
+title: "CLI Manager"
+description: "A command-line tool for scaffolding files, running migrations, managing the database, and starting the development server."
+---
+
+The CLI Manager is the primary command-line interface for MVC PHP. It lets you scaffold controllers, models, migrations, and more — all from a single entry point: the `manager` file in your project root.
+
+## Running commands
+
+All commands follow this pattern:
+
+```bash
+php manager <command> [arguments]
+```
+
+For example, to start the development server on port 8000:
+
+```bash
+php manager server
+```
+
+## Architecture
+
+The CLI system is made up of three classes that work together.
+
+<CardGroup cols={2}>
+  <Card title="Manager" icon="terminal">
+    Singleton that holds all registered commands and dispatches the correct one based on `$argv`.
+  </Card>
+  <Card title="Command" icon="code">
+    Represents a single registered command. Parses its signature to identify static segments and named arguments (required or optional).
+  </Card>
+  <Card title="Console" icon="rectangle-terminal">
+    Passed to every command handler. Provides styled output methods and flow control.
+  </Card>
+  <Card title="manager file" icon="file-code">
+    The PHP entry point at the project root. Registers all commands with `Manager::command()`, then dispatches with `Manager::call($argv)`.
+  </Card>
+</CardGroup>
+
+### How `Manager::command` works
+
+`Manager::command($signature, $handler)` registers a command by parsing its signature string. Tokens wrapped in `{curly braces}` become named arguments passed to the handler. A trailing `?` inside the braces marks the argument as optional.
+
+```php
+// Required argument
+Manager::command("new {type} {name}", function($console, $type, $name) {
+    // ...
+});
+
+// Optional argument (defaults to null if omitted)
+Manager::command("server {port?}", function($console, $port) {
+    $port ??= 8000;
+    // ...
+});
+```
+
+The method returns the `Command` instance so you can chain `->describe()` to attach a description:
+
+```php
+Manager::command("create", function($console) {
+    // ...
+})->describe("Create initial folders and files for the framework");
+```
+
+### How `Manager::call` works
+
+`Manager::call($argv)` is called once at the bottom of the `manager` file. It strips the script name from `$argv`, then iterates through every registered command to find one whose static segments match the input. When a match is found it extracts the argument values and calls `$command->run(...$args)`, which invokes your handler with a fresh `Console` instance as the first parameter.
+
+```php
+// Bottom of the manager file — always required
+Manager::call($argv);
+```
+
+If no command matches, the CLI prints an error and exits.
+
+## Console output methods
+
+Every command handler receives a `$console` object as its first argument. Use it to write styled output to the terminal.
+
+| Method | Color | Use for |
+|---|---|---|
+| `$console->success($text)` | Green | Successful operations |
+| `$console->error($text)` | Red | Failures and validation errors |
+| `$console->warning($text)` | Yellow | Non-fatal notices |
+| `$console->info($text)` | Default | Neutral informational output |
+
+All output methods return `$this`, so they are chainable:
+
+```php
+$console->error("File already exists")->exit();
+```
+
+Call `$console->exit()` (wraps `exit()`) to terminate execution after printing a message. Pass an optional integer exit code:
+
+```php
+$console->error("Something went wrong")->exit(1);
+```
+
+## Adding custom commands
+
+Open the `manager` file and call `Manager::command()` before the `Manager::call($argv)` line at the bottom.
+
+```php
+Manager::command("greet {name}", function($console, $name) {
+    $console->success("Hello, " . $name . "!");
+})->describe("Print a greeting to the console");
+
+// This line must remain last
+Manager::call($argv);
+```
+
+Run your new command:
+
+```bash
+php manager greet World
+```
+
+<Tip>
+  Keep the `Manager::call($argv)` call as the very last statement in the `manager` file. Any command registered after that line will never be reachable.
+</Tip>
+
+<Note>
+  Custom commands have full access to all framework classes — `Config`, `DB`, models, and anything else autoloaded by the `spl_autoload_register` block at the top of the `manager` file.
+</Note>

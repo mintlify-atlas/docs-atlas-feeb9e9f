@@ -1,0 +1,171 @@
+---
+title: "Routing"
+description: "Define URL routes and map them to controllers or closures using the Route facade."
+---
+
+Routes map incoming HTTP requests to controller actions or closures. All route files live in the `routes/` directory and are loaded automatically at boot time.
+
+## Route files
+
+The framework scans every `.php` file in `routes/` and registers its routes under a group named after the file.
+
+| File | Group prefix | Purpose |
+|---|---|---|
+| `routes/web.php` | `web` | Browser-facing routes |
+| `routes/api.php` | `api` | API endpoints |
+| `routes/test.php` | `test` | Development/testing routes |
+
+```php routes/web.php
+<?php
+
+use libs\Router\Route;
+
+Route::get('/', function() {
+    return view('home');
+})->name('home');
+```
+
+<Note>
+You can add new route files to `routes/` at any time — they are loaded automatically without any additional registration.
+</Note>
+
+## HTTP methods
+
+The `Route` facade exposes a static method for each HTTP verb:
+
+```php
+Route::get($uri, $action);
+Route::post($uri, $action);
+Route::put($uri, $action);
+Route::delete($uri, $action);
+```
+
+Each method returns the router instance so you can chain modifiers.
+
+## Route actions
+
+An action can be a closure or a `"ControllerClass@method"` string.
+
+<Tabs>
+  <Tab title="Closure">
+    ```php
+    Route::get('/hello', function() {
+        return view('home');
+    });
+    ```
+  </Tab>
+  <Tab title="Controller">
+    ```php
+    Route::get('/users', 'UserController@index');
+    Route::post('/users', 'UserController@store');
+    ```
+  </Tab>
+</Tabs>
+
+## Route parameters
+
+Embed variable segments in the URI by wrapping them in curly braces.
+
+### Required parameters
+
+```php
+Route::get('/users/{id}', 'UserController@show');
+```
+
+The value is available on the `Request` object:
+
+```php
+public function show(Request $request) {
+    $id = $request->id; // URI segment captured as {id}
+}
+```
+
+### Optional parameters
+
+Append `?` inside the braces to make a segment optional:
+
+```php
+Route::get('/test/{name?}', function(Request $request) {
+    $name = $request->name; // null when not provided
+})->name('test-get');
+```
+
+## Route naming
+
+Call `->name()` to assign a name to a route. Named routes can be resolved to URLs with the `route()` helper.
+
+```php
+Route::get('/', function() {
+    return view('home');
+})->name('home');
+
+// Resolve to URL elsewhere:
+$url = route('home'); // returns the full URL for '/'
+```
+
+## Route groups
+
+Use `->group()` to apply a shared prefix or to scope several routes together.
+
+### String prefix
+
+Pass a string to set a URI prefix for the current route:
+
+```php
+Route::get('/dashboard', 'DashboardController@index')
+    ->group('admin');
+// Matched URI: /admin/dashboard
+```
+
+### Closure group
+
+Wrap multiple routes in a closure to apply shared attributes to all of them:
+
+```php
+Route::group('api/v1');
+Route::group(function() {
+    Route::get('/users', 'UserController@index');
+    Route::post('/users', 'UserController@store');
+});
+// Both routes are prefixed with /api/v1
+```
+
+After the closure executes the shared group prefix is reset.
+
+## Middleware on routes
+
+Call `->middleware()` with one or more middleware aliases or class names:
+
+```php
+Route::get('/profile', 'ProfileController@show')
+    ->middleware('auth');
+
+Route::get('/admin', 'AdminController@index')
+    ->middleware('auth', 'verify_email');
+```
+
+You can also pass fully-qualified class names:
+
+```php
+use app\Middlewares\Authenticate;
+
+Route::get('/profile', 'ProfileController@show')
+    ->middleware(Authenticate::class);
+```
+
+Middleware runs in the order it is listed before the route action is called. See [Middleware](/core/middleware) for the full list of built-in aliases.
+
+## Chaining modifiers
+
+All modifiers return the router instance, so you can chain them freely:
+
+```php
+Route::get('/account', 'AccountController@show')
+    ->name('account')
+    ->middleware('auth')
+    ->group('user');
+```
+
+## How routes are dispatched
+
+When a request arrives, `Router::controller()` iterates registered routes in order. It matches by HTTP method first, then by URI segments. Named URI parameters are extracted and added to the `Request` object. If no route matches, the framework calls `abort(404)`.

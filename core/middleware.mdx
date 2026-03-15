@@ -1,0 +1,190 @@
+---
+title: "Middleware"
+description: "Filter and transform HTTP requests before they reach a controller action."
+---
+
+Middleware intercepts requests as they travel through the pipeline. Each middleware can inspect or modify the request, decide whether to pass it to the next handler, or short-circuit the response entirely.
+
+## Creating middleware
+
+Use the `manager` CLI to scaffold a new middleware:
+
+```bash
+php manager make:middleware EnsureJsonRequest
+```
+
+This creates `app/Middlewares/EnsureJsonRequest.php` from the built-in template:
+
+```php app/Middlewares/EnsureJsonRequest.php
+<?php
+
+namespace app\Middlewares;
+
+use libs\Middle\Middleware;
+use libs\HTTP\Request;
+
+class EnsureJsonRequest extends Middleware {
+
+    /**
+     * Called automatically when the middleware runs.
+     */
+    public function handle(Request $request, \Closure $next) {
+        return $next($request);
+    }
+
+    /**
+     * Called after the middleware has run.
+     */
+    public function terminate(Request $request, \Closure $response) {
+
+    }
+
+    /**
+     * Report exceptions or errors.
+     */
+    public function report(\Exception $ex) {
+
+    }
+
+}
+```
+
+### The three lifecycle hooks
+
+<CardGroup cols={3}>
+  <Card title="handle" icon="filter">
+    The main interception point. Call `$next($request)` to continue the pipeline or return early to block the request.
+  </Card>
+  <Card title="terminate" icon="check">
+    Called after the route action has run. Use it for clean-up tasks such as logging.
+  </Card>
+  <Card title="report" icon="triangle-alert">
+    Called if an exception is thrown inside the middleware. Use it to log errors or return a custom error response.
+  </Card>
+</CardGroup>
+
+## Built-in middleware
+
+The framework ships with several ready-to-use middleware classes:
+
+| Class | Alias | What it does |
+|---|---|---|
+| `Authenticate` | `auth` | Redirects unauthenticated users to the `login` route |
+| `AuthenticateApi` | `auth_api` | Validates a Bearer token from the `Authorization` header |
+| `Guest` | `guest` | Redirects authenticated users away to the `home` route |
+| `VerifyCsrfToken` | `csrf` | Validates the `_token` field against the session and cookie; skips GET requests and `api/*` paths |
+| `VerifyEmail` | `verify_email` | Aborts with 401 if the authenticated user has not verified their email |
+| `StartSession` | `session` | Initializes the session |
+
+## Global middleware
+
+Global middleware runs on **every** request. Register it in `app/Services/MiddlewareService.php`:
+
+```php app/Services/MiddlewareService.php
+public function handle() {
+    // Runs on every request
+    Middleware::middleware([
+        \libs\Session\Middleware\StartSession::class,
+        \app\Middlewares\VerifyCsrfToken::class,
+    ]);
+
+    // Aliases for use in route definitions
+    Middleware::middlewareAlias([
+        'auth'         => \app\Middlewares\Authenticate::class,
+        'auth_api'     => \app\Middlewares\AuthenticateApi::class,
+        'guest'        => \app\Middlewares\Guest::class,
+        'verify_email' => \app\Middlewares\VerifyEmail::class,
+        'csrf'         => \app\Middlewares\VerifyCsrfToken::class,
+        'session'      => \libs\Session\Middleware\StartSession::class,
+    ]);
+}
+```
+
+Aliases let you reference middleware by a short name in route definitions instead of the full class path.
+
+<Warning>
+Global middleware runs before any route-level middleware. Adding expensive operations here affects every request in the application.
+</Warning>
+
+## Applying middleware to routes
+
+Call `->middleware()` on a route with one or more aliases or class names:
+
+```php
+// Single middleware
+Route::get('/profile', 'ProfileController@show')
+    ->middleware('auth');
+
+// Multiple middleware (run in order)
+Route::get('/settings', 'SettingsController@index')
+    ->middleware('auth', 'verify_email');
+
+// Full class name
+use app\Middlewares\Authenticate;
+
+Route::get('/dashboard', 'DashboardController@index')
+    ->middleware(Authenticate::class);
+```
+
+Middleware is merged with the global stack and runs in registration order.
+
+## Middleware examples
+
+### Authentication check
+
+```php app/Middlewares/Authenticate.php
+public function handle(Request $request, \Closure $next) {
+    if (!Auth::check()) {
+        return redirect(route('login'));
+    }
+    return $next($request);
+}
+```
+
+### API token authentication
+
+```php app/Middlewares/AuthenticateApi.php
+public function handle(Request $request, \Closure $next) {
+    $token = $request->bearerToken();
+    $access_token = AccessToken::find(function($find) use ($token) {
+        $find->where('token', $token);
+    });
+    if ($access_token) {
+        if ($access_token->hasExpired()) {
+            $access_token->delete();
+            return abort(401);
+        }
+        Auth::login($access_token->tokenable(), $access_token);
+        return $next($request);
+    }
+    return abort(401);
+}
+```
+
+### Guest-only guard
+
+```php app/Middlewares/Guest.php
+public function handle(Request $request, \Closure $next) {
+    if (Auth::check()) {
+        return redirect(route('home'));
+    }
+    return $next($request);
+}
+```
+
+## Middleware execution order
+
+<Steps>
+  <Step title="Global middleware">
+    The stack defined in `Middleware::middleware([...])` runs first on every request.
+  </Step>
+  <Step title="Route middleware">
+    Middleware attached to the matched route with `->middleware()` runs next, in the order listed.
+  </Step>
+  <Step title="Controller action">
+    Once all middleware calls `$next($request)`, the route action (controller method or closure) executes.
+  </Step>
+  <Step title="terminate hooks">
+    After the action completes, each middleware's `terminate()` method is called in reverse order.
+  </Step>
+</Steps>

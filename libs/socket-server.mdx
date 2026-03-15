@@ -1,0 +1,221 @@
+---
+title: "WebSocket Server"
+description: "Run a long-lived WebSocket server process using the SocketServer class."
+---
+
+The `SocketServer` class (`libs\Socket\SocketServer`) implements a raw PHP WebSocket server using `ext-sockets`. It handles the WebSocket handshake, frame encoding/decoding, and event dispatching.
+
+<Warning>
+`SocketServer` is designed to run as a long-lived CLI process, not within a standard web request. Start it with `php` on the command line or via a process manager such as Supervisor.
+</Warning>
+
+## Environment variables
+
+The server reads its host and port from the environment.
+
+```bash
+# config.env
+SOCKET_HOST=127.0.0.1
+SOCKET_PORT=8080
+```
+
+## Starting the server
+
+<Steps>
+  <Step title="Create a server script">
+    Create a PHP file outside the web root — for example `socket.php` in the project root.
+
+    ```php
+    <?php
+
+    require_once 'vendor/autoload.php';
+    require_once 'libs/helpers.php';
+
+    use libs\Socket\SocketServer;
+
+    $server = new SocketServer();
+    ```
+  </Step>
+  <Step title="Register event handlers">
+    Use `on()` to register a named event channel and its handler. The handler receives the raw decoded JSON string and the client socket resource.
+
+    ```php
+    $server->on('chat', function (string $data, $client) use ($server) {
+        $payload = json_decode($data);
+
+        // Broadcast the message to all other connected clients
+        $server->emit('chat', json_encode([
+            'user'    => $payload->user,
+            'message' => $payload->message,
+        ]), $client);
+    });
+    ```
+  </Step>
+  <Step title="Start listening">
+    Call `listen()` to enter the event loop. This call blocks indefinitely.
+
+    ```php
+    $server->listen();
+    ```
+  </Step>
+  <Step title="Run the process">
+    ```bash
+    php socket.php
+    ```
+
+    You should see:
+
+    ```
+    Servidor a activo 127.0.0.1:8080
+    ```
+  </Step>
+</Steps>
+
+## Class reference
+
+### Constructor
+
+```php
+$server = new SocketServer();
+```
+
+Reads `SOCKET_HOST` and `SOCKET_PORT` from the environment, creates the TCP socket, binds to the port, and begins listening for connections.
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `on` | `on(string $key, callable $action): void` | Register a handler for the named event channel |
+| `emit` | `emit(string $key, string $message, resource\|null $client = null): void` | Broadcast a JSON message on a channel. Pass `$client` to exclude the sender |
+| `send` | `send(string $key, resource\|null $client_sender = null): void` | Send the last stored message on a channel |
+| `listen` | `listen(): void` | Enter the blocking event loop |
+
+### Public properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `$host` | `string` | Bound hostname from `SOCKET_HOST` |
+| `$port` | `string` | Bound port from `SOCKET_PORT` |
+| `$server` | `resource` | The master socket resource |
+| `$sockets` | `array` | Registered channels and their connected clients |
+
+## Broadcasting events
+
+`emit()` sends a JSON message to all clients connected to the given channel. Pass the sender's socket as the third argument to exclude them from the broadcast (useful for chat).
+
+```php
+// Broadcast to everyone including the sender
+$server->emit('notifications', json_encode(['type' => 'ping']));
+
+// Broadcast to everyone except the sender
+$server->emit('chat', json_encode(['text' => 'Hello']), $clientSocket);
+```
+
+The emitted payload automatically has a `key` property added by the server:
+
+```json
+{"user":"alice","message":"Hi!","key":"chat"}
+```
+
+## Client-side connection
+
+Connect from a browser using the standard `WebSocket` API. Send messages as JSON objects with a `key` property matching one of the registered event channels.
+
+```javascript
+const socket = new WebSocket('ws://127.0.0.1:8080');
+
+socket.addEventListener('open', () => {
+    console.log('Connected to WebSocket server');
+});
+
+socket.addEventListener('message', (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.key === 'chat') {
+        console.log(`${data.user}: ${data.message}`);
+    }
+});
+
+// Send a message on the 'chat' channel
+function sendMessage(user, message) {
+    socket.send(JSON.stringify({
+        key:     'chat',
+        user:    user,
+        message: message,
+    }));
+}
+```
+
+## Full example
+
+<Tabs>
+  <Tab title="Server (socket.php)">
+    ```php
+    <?php
+
+    require_once 'vendor/autoload.php';
+    require_once 'libs/helpers.php';
+
+    use libs\Socket\SocketServer;
+
+    $server = new SocketServer();
+
+    $server->on('chat', function (string $data, $client) use ($server) {
+        $payload = json_decode($data);
+        $server->emit('chat', json_encode([
+            'user'    => htmlspecialchars($payload->user ?? 'anonymous'),
+            'message' => htmlspecialchars($payload->message ?? ''),
+        ]), $client);
+    });
+
+    $server->on('presence', function (string $data, $client) use ($server) {
+        $payload = json_decode($data);
+        $server->emit('presence', json_encode([
+            'user'   => $payload->user,
+            'status' => 'online',
+        ]));
+    });
+
+    $server->listen();
+    ```
+  </Tab>
+  <Tab title="Client (browser)">
+    ```javascript
+    const socket = new WebSocket('ws://127.0.0.1:8080');
+    const username = 'alice';
+
+    socket.addEventListener('open', () => {
+        // Announce presence
+        socket.send(JSON.stringify({ key: 'presence', user: username }));
+    });
+
+    socket.addEventListener('message', (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.key === 'chat') {
+            const div = document.createElement('div');
+            div.textContent = `${data.user}: ${data.message}`;
+            document.getElementById('messages').appendChild(div);
+        }
+
+        if (data.key === 'presence') {
+            console.log(`${data.user} is ${data.status}`);
+        }
+    });
+
+    document.getElementById('send').addEventListener('click', () => {
+        const input = document.getElementById('message');
+        socket.send(JSON.stringify({
+            key:     'chat',
+            user:    username,
+            message: input.value,
+        }));
+        input.value = '';
+    });
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+The `SocketServer` listens on a plain (non-TLS) WebSocket (`ws://`). To use `wss://` in production, terminate TLS at a reverse proxy such as Nginx and forward the plain WebSocket connection to the PHP process.
+</Note>

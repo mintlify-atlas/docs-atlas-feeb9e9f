@@ -1,0 +1,275 @@
+---
+title: "API Tokens"
+description: "Generate and validate bearer tokens for stateless API authentication using the HasApiTokens trait."
+---
+
+MVC PHP provides token-based API authentication through the `HasApiTokens` trait and the `AuthenticateApi` middleware. Tokens are stored in the `access_token` table and sent with requests as `Authorization: Bearer` headers.
+
+## Setup
+
+Add the `HasApiTokens` trait to the model you want to issue tokens for (typically `User`):
+
+```php
+namespace app\Models;
+
+use libs\DB\Model;
+use libs\Auth\HasApiTokens;
+
+class User extends Model {
+    use HasApiTokens;
+}
+```
+
+Make sure the `api` driver is configured in `config/auth.php`:
+
+```php
+'api' => [
+    'driver' => 'token',
+    'model'  => app\Models\User::class,
+],
+```
+
+## Creating tokens
+
+### createToken()
+
+Create a new named token for the authenticated user:
+
+```php
+$token = $user->createToken('mobile-app');
+
+// Return the raw token string to the client once
+return response()->json([
+    'token' => $token->token,
+]);
+```
+
+`createToken()` persists an `AccessToken` record with:
+
+| Field | Value |
+|---|---|
+| `id_tokenable` | The user's primary key |
+| `type_tokenable` | The fully-qualified model class |
+| `name` | The name you supply |
+| `token` | A cryptographically random hash |
+| `abilities` | `["*"]` (all abilities) |
+| `ip_address` | IP of the creating request |
+| `user_agent` | User agent of the creating request |
+| `last_activity` | Current timestamp |
+| `expire_at` | Current timestamp + 1 year |
+
+<Warning>
+  The raw token value is only available at creation time. Store it securely on the client — it cannot be retrieved from the database later.
+</Warning>
+
+## Listing and inspecting tokens
+
+### tokens()
+
+Return all tokens belonging to the user:
+
+```php
+$tokens = $user->tokens(); // array of AccessToken models
+
+foreach ($tokens as $token) {
+    echo $token->name . ' — expires ' . $token->expire_at;
+}
+```
+
+### token()
+
+Find a specific token by name:
+
+```php
+$token = $user->token('mobile-app'); // AccessToken model or null
+```
+
+Called without arguments it returns the currently authenticated token (set during the request by `AuthenticateApi`):
+
+```php
+$current = $user->token(); // token set by Auth::login($model, $access_token)
+```
+
+### hasToken() / hasTokens()
+
+```php
+if ($user->hasToken('mobile-app')) { ... }
+if ($user->hasTokens()) { ... }
+```
+
+## Checking abilities
+
+### tokenCan()
+
+Check whether a named token has a specific ability:
+
+```php
+if ($user->tokenCan('mobile-app', 'read:orders')) {
+    // allowed
+}
+```
+
+Abilities are stored as a JSON array. The wildcard `"*"` grants every ability. `AccessToken::can()` is also available directly on the model:
+
+```php
+$token = $user->token('mobile-app');
+if ($token->can('read:orders')) { ... }
+```
+
+### tokenAbilities()
+
+Return the abilities array for a named token:
+
+```php
+$abilities = $user->tokenAbilities('mobile-app'); // e.g. ["*"]
+```
+
+## Deleting tokens
+
+```php
+// Delete a specific token by name
+$user->deleteToken('mobile-app');
+
+// Delete all tokens for the user
+$user->deleteTokens();
+```
+
+## Sending bearer tokens in requests
+
+Clients include the token in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer <token>" https://example.com/api/orders
+```
+
+```javascript
+fetch('/api/orders', {
+  headers: {
+    'Authorization': 'Bearer ' + token,
+  },
+});
+```
+
+## Validating tokens with AuthenticateApi
+
+Protect API routes by applying the `AuthenticateApi` middleware. It reads the bearer token from the request, looks it up in `access_token`, checks expiry, then calls `Auth::login()` with the resolved model:
+
+```php
+// app/Middlewares/AuthenticateApi.php
+class AuthenticateApi extends Middleware {
+    public function handle(Request $request, \Closure $next) {
+        $token = $request->bearerToken();
+
+        $access_token = AccessToken::find(function ($find) use ($token) {
+            $find->where('token', $token);
+        });
+
+        if ($access_token) {
+            if ($access_token->hasExpired()) {
+                $access_token->delete();
+                return abort(401);
+            }
+            $access_token->last_activity = date('Y-m-d H:i:s');
+            $access_token->save();
+
+            $model = $access_token->tokenable();
+            if ($model == null) {
+                $access_token->delete();
+                return abort(401);
+            }
+
+            Auth::login($model, $access_token);
+            return $next($request);
+        }
+
+        return abort(401);
+    }
+}
+```
+
+Apply it to your API routes:
+
+```php
+$router->get('/api/orders', [OrderController::class, 'index'])
+       ->middleware(AuthenticateApi::class);
+```
+
+<Note>
+  `AuthenticateApi` updates `last_activity` on every authenticated request, giving you an accurate record of when each token was last used.
+</Note>
+
+## The AccessToken model
+
+The `AccessToken` model maps to the `access_token` table and provides three helper methods:
+
+```php
+use libs\Auth\Models\AccessToken;
+
+// Resolve the owning model
+$user = $access_token->tokenable(); // returns the User (or other model) instance
+
+// Check expiry
+if ($access_token->hasExpired()) {
+    $access_token->delete();
+}
+
+// Check a single ability
+if ($access_token->can('read:orders')) { ... }
+```
+
+## Example: issue a token on login
+
+The following shows a typical API login endpoint that returns a token to the client:
+
+```php
+namespace app\Controllers\Api;
+
+use libs\Auth\Auth;
+use libs\HTTP\Request;
+use libs\HTTP\Response;
+use app\Models\User;
+
+class AuthController {
+
+    public function login(Request $request, Response $response) {
+        $credentials = [
+            'email'    => $request->input('email'),
+            'password' => $request->input('password'),
+        ];
+
+        if (!Auth::attempt($credentials)) {
+            return response()->json(['message' => 'Invalid credentials.'], 401);
+        }
+
+        $user  = Auth::user();
+        $token = $user->createToken('api');
+
+        return response()->json([
+            'token'      => $token->token,
+            'expires_at' => $token->expire_at,
+        ]);
+    }
+
+    public function logout(Request $request, Response $response) {
+        $user = Auth::user();
+        $user->deleteTokens();
+        return response()->json(['message' => 'Logged out.']);
+    }
+
+}
+```
+
+<Steps>
+  <Step title="Client sends credentials">
+    POST `email` and `password` to the login endpoint.
+  </Step>
+  <Step title="Auth::attempt() validates">
+    Returns `true` on success and sets the authenticated user via `Auth::login()`.
+  </Step>
+  <Step title="Token is created and returned">
+    `createToken()` persists the token and returns the `AccessToken` model. The raw `token` string is returned to the client — this is the only time it is available in plaintext.
+  </Step>
+  <Step title="Client includes the token in subsequent requests">
+    Every API request includes `Authorization: Bearer <token>`. `AuthenticateApi` validates the token and loads the user.
+  </Step>
+</Steps>

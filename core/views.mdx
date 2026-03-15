@@ -1,0 +1,201 @@
+---
+title: "Views"
+description: "Render HTML templates from resources/views/ using the view() helper and the built-in template engine."
+---
+
+Views are PHP template files stored in `resources/views/`. The template engine compiles `@`-directives and `{{ }}` expressions into PHP and caches the result for fast repeated rendering.
+
+## Rendering a view
+
+Call the global `view()` helper from a route closure or controller action:
+
+```php
+return view('home');           // renders resources/views/home.php
+return view('users.profile');  // renders resources/views/users/profile.php
+```
+
+Dot notation maps to directory separators, so `'layouts.head'` resolves to `resources/views/layouts/head.php`.
+
+## Passing data to a view
+
+Pass an associative array as the second argument. Each key becomes a variable inside the template:
+
+```php
+return view('user', [
+    'nombre' => 'Alice',
+]);
+```
+
+Inside the template, use `$nombre` directly:
+
+```php resources/views/user.php
+<h1>Hola, {{$nombre}} soy un componente dinámico</h1>
+```
+
+## Template syntax
+
+The engine replaces directives at compile time. The compiled file is stored in the views cache and reused until the source file changes.
+
+### Output expressions
+
+```php
+{{ $variable }}          {{-- echo a variable --}}
+{{ $name ?? 'Guest' }}   {{-- with null coalescing --}}
+{{ csrfToken() }}        {{-- call a function --}}
+```
+
+### Control structures
+
+```php
+@if($user)
+    <p>Hello, {{ $user->name }}</p>
+@elseif($guest)
+    <p>Welcome, guest</p>
+@else
+    <p>Please log in</p>
+@endif
+
+@foreach($items as $item)
+    <li>{{ $item->name }}</li>
+@endforeach
+
+@for($i = 0; $i < 10; $i++)
+    <span>{{ $i }}</span>
+@endfor
+
+@while($condition)
+    ...
+@endwhile
+```
+
+### Raw PHP blocks
+
+```php
+@php
+    $id ??= 'global-modal';
+    $view = '';
+@endphp
+```
+
+### CSRF field
+
+```php
+<form method="POST">
+    @csrf
+    ...
+</form>
+```
+
+This expands to a hidden `_token` input populated with the current CSRF token.
+
+## Layouts
+
+Use `@extends()` to pull in a layout file. It acts as a simple include that runs `view()` on the referenced path.
+
+```php resources/views/home.php
+@extends('layouts.head')
+
+<div class="form-container">
+    ...
+</div>
+
+@extends('layouts.footer')
+```
+
+A layout file is just another view:
+
+```php resources/views/layouts/head.php
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ $title ?? env('APP_NAME') }}</title>
+    <meta charset="utf-8">
+    <meta name="_token" content="{{ csrfToken() }}">
+    <link rel="stylesheet" href="{{ url('css/normalize.css') }}">
+    <link rel="stylesheet" href="{{ scss('app.scss') }}">
+</head>
+<body>
+@extends('layouts.header')
+```
+
+## Including sub-views
+
+Use `@include()` to embed another view in place:
+
+```php
+@include('components.modal')
+@include('layouts.header')
+```
+
+## Components
+
+Components are PHP classes that extend `libs\View\Component` and live in `app/Components/`. They combine a PHP class (for data and logic) with a view file.
+
+```php app/Components/Alert.php
+<?php
+
+namespace app\Components;
+
+use libs\View\Component;
+
+class Alert extends Component {
+
+    public string $type    = 'info';
+    public string $message = '';
+
+    protected string $view = 'components.alert';
+
+}
+```
+
+The component's public properties are automatically passed to its view:
+
+```php resources/views/components/alert.php
+<div class="alert alert--{{ $type }}">
+    {{ $message }}
+</div>
+```
+
+Embed a component in any template with `@component()`:
+
+```php
+@component(Alert)
+```
+
+For inline rendering without the `wire:render` wrapper, use `@componentNotRender()`.
+
+<Note>
+Components support middleware. Set `protected $middlewares = [...]` in the class to restrict which requests can interact with the component.
+</Note>
+
+## SCSS compilation
+
+Reference SCSS files using the `scss()` helper. The helper compiles the source file from `resources/scss/` and outputs the corresponding path under `public/css/`:
+
+```php
+<link rel="stylesheet" href="{{ scss('app.scss') }}">
+```
+
+For plain CSS files already in `public/css/`, use `url()` instead:
+
+```php
+<link rel="stylesheet" href="{{ url('css/normalize.css') }}">
+```
+
+## SPA scripts
+
+The `@scriptsSPA` directive injects the JavaScript bundles needed for the interactive component system:
+
+```php
+@scriptsSPA
+```
+
+This expands to script tags for `Fetch.js`, `Wire.js`, `Component.js`, and `SPA.js`, along with a `_token` variable for CSRF-protected requests.
+
+## View cache
+
+Compiled templates are stored in the views cache directory. The engine checks file modification times and only recompiles when the source has changed. You do not need to clear the cache manually during development.
+
+<Tip>
+Organize templates using the `layouts/`, `components/`, and feature-specific subdirectories to keep `resources/views/` tidy as the project grows.
+</Tip>

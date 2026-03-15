@@ -1,0 +1,359 @@
+---
+title: "Configuration"
+description: "Reference for every configuration key in config.env and the config/ directory, and how to read config values in your code."
+---
+
+## How configuration works
+
+MVC PHP uses a dotenv-style file called `config.env` at the project root. On every request, `libs/Env` loads this file as a singleton and makes all keys available through the `env()` helper:
+
+```php
+$debug = env('APP_DEBUG');          // read a value
+$locale = env('APP_LOCALE', 'en'); // read with a default
+```
+
+The `config/` directory contains PHP files that read from `env()` and return associative arrays. For example, `config/app.php`:
+
+```php
+return [
+    'debug'        => (bool) env('APP_DEBUG', true),
+    'host'         => env('APP_HOST'),
+    'key'          => env('APP_KEY'),
+    'locale'       => env('APP_LOCALE', 'es'),
+    'faker_locale' => env('FAKER_LOCALE', 'es_ES'),
+    'timezone'     => env('APP_TIMEZONE', 'America/Mexico_City'),
+];
+```
+
+You access these values via the `Config` class:
+
+```php
+use libs\Config;
+
+$debug    = Config::app('debug');          // true / false
+$host     = Config::app('host');           // app host string
+$dbName   = Config::database('database'); // database name
+$driver   = Config::session('driver');    // 'database' or 'file'
+```
+
+Dot notation lets you drill into nested arrays:
+
+```php
+$sessionTable  = Config::session('database.table');       // 'session'
+$cookieName    = Config::session('cookie.name');          // 'SESSION_PHP'
+$storagePath   = Config::filesystem('storage.public');   // 'storage/app/public'
+```
+
+<Note>
+  The `Config` class automatically creates directories resolved from `config/filesystem.php` if they do not already exist. This means the `storage/` sub-directories are created on first boot.
+</Note>
+
+## The `config.env` file
+
+Copy `config.env.example` to `config.env` and fill in your values. This file is never committed to version control.
+
+```ini
+APP_NAME=localhost
+APP_KEY=SOY_UNA_KEY
+APP_HOST=localhost
+APP_DEBUG=true
+
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_DATABASE=mvc_php
+
+SOCKET_HOST=localhost
+SOCKET_PORT=3000
+
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USERNAME=
+EMAIL_PASSWORD=
+EMAIL_FROM=
+```
+
+## Application settings (`config/app.php`)
+
+Controlled by the following `config.env` keys:
+
+<ParamField path="APP_NAME" type="string" required>
+  The name of your application. Used as the default page title in views via `env('APP_NAME')`.
+</ParamField>
+
+<ParamField path="APP_KEY" type="string" required>
+  A secret key used for encryption and signing. Set this to a long random string before deploying to production. Never commit this value.
+</ParamField>
+
+<ParamField path="APP_HOST" type="string" default="localhost">
+  The hostname of your application. Resolved by `Config::app('host')`.
+</ParamField>
+
+<ParamField path="APP_DEBUG" type="boolean" default="true">
+  Enable or disable debug mode. When `true`, detailed error information is shown. Set to `false` in production.
+</ParamField>
+
+<ParamField path="APP_LOCALE" type="string" default="es">
+  The default locale for the `__()` translation helper. Files are loaded from `resources/lang/{locale}/`.
+</ParamField>
+
+<ParamField path="APP_TIMEZONE" type="string" default="America/Mexico_City">
+  PHP timezone identifier. Set on every request via `date_default_timezone_set()`. See the [PHP timezone list](https://www.php.net/manual/en/timezones.php) for valid values.
+</ParamField>
+
+<ParamField path="FAKER_LOCALE" type="string" default="es_ES">
+  Locale passed to FakerPHP when generating fake data in seeders and tests.
+</ParamField>
+
+## Database settings (`config/database.php`)
+
+```php
+return [
+    'host'     => env('DB_HOST'),
+    'user'     => env('DB_USER'),
+    'password' => env('DB_PASSWORD'),
+    'database' => env('DB_DATABASE'),
+    'port'     => env('DB_PORT'),
+    'engine'   => 'InnoDB',
+    'charset'  => 'utf8mb4',
+];
+```
+
+<ParamField path="DB_HOST" type="string" default="localhost">
+  The hostname or IP address of your MySQL server.
+</ParamField>
+
+<ParamField path="DB_PORT" type="number" default="3306">
+  The TCP port your MySQL server listens on.
+</ParamField>
+
+<ParamField path="DB_USER" type="string" default="root">
+  The MySQL username.
+</ParamField>
+
+<ParamField path="DB_PASSWORD" type="string">
+  The MySQL password. Leave blank if your local MySQL instance has no password.
+</ParamField>
+
+<ParamField path="DB_DATABASE" type="string" default="mvc_php">
+  The name of the database to connect to. Create this database before running `php manager migrate`.
+</ParamField>
+
+The `engine` (`InnoDB`) and `charset` (`utf8mb4`) values are hard-coded in `config/database.php` and are not overridable from `config.env`.
+
+## Session settings (`config/session.php`)
+
+```php
+return [
+    'driver'  => env('SESSION_DRIVER', 'database'),
+    'encrypt' => env('SESSION_ENCRYPT', false),
+
+    'file' => [
+        'path' => env('SESSION_PATH', storagePath('framework/sessions')),
+    ],
+
+    'database' => [
+        'table' => env('SESSION_TABLE', 'session'),
+    ],
+
+    'cookie' => [
+        'name'      => env('SESSION_COOKIE_NAME', 'SESSION_PHP'),
+        'lifetime'  => env('SESSION_COOKIE_LIFETIME', 120),
+        'path'      => env('SESSION_COOKIE_PATH', '/'),
+        'domain'    => env('SESSION_COOKIE_DOMAIN', null),
+        'secure'    => env('SESSION_COOKIE_SECURE', false),
+        'httponly'  => env('SESSION_COOKIE_HTTPONLY', true),
+        'samesite'  => env('SESSION_COOKIE_SAMESITE', 'Lax'),
+    ],
+];
+```
+
+<ParamField path="SESSION_DRIVER" type="string" default="database">
+  Where sessions are stored. Accepted values: `database` (stores sessions in the `session` table) or `file` (stores sessions in `storage/framework/sessions`).
+</ParamField>
+
+<ParamField path="SESSION_ENCRYPT" type="boolean" default="false">
+  Encrypt session data before storing it.
+</ParamField>
+
+<ParamField path="SESSION_TABLE" type="string" default="session">
+  The database table used when `SESSION_DRIVER=database`. Only relevant for the `database` driver.
+</ParamField>
+
+<ParamField path="SESSION_PATH" type="string" default="storage/framework/sessions">
+  The filesystem path used when `SESSION_DRIVER=file`. Only relevant for the `file` driver.
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_NAME" type="string" default="SESSION_PHP">
+  The name of the session cookie sent to the browser.
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_LIFETIME" type="number" default="120">
+  Session cookie lifetime in minutes.
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_PATH" type="string" default="/">
+  The cookie path scope.
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_DOMAIN" type="string">
+  The cookie domain scope. Defaults to `null` (current domain).
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_SECURE" type="boolean" default="false">
+  When `true`, the cookie is only sent over HTTPS. Enable this in production.
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_HTTPONLY" type="boolean" default="true">
+  When `true`, JavaScript cannot access the session cookie (`HttpOnly` flag).
+</ParamField>
+
+<ParamField path="SESSION_COOKIE_SAMESITE" type="string" default="Lax">
+  Controls cross-site cookie behaviour. Accepted values: `Strict`, `Lax`, `None`.
+</ParamField>
+
+## Email settings (`config/email.php`)
+
+```php
+return [
+    'host'     => env('EMAIL_HOST'),
+    'port'     => env('EMAIL_PORT'),
+    'username' => env('EMAIL_USERNAME'),
+    'password' => env('EMAIL_PASSWORD'),
+    'from'     => env('EMAIL_FROM'),
+];
+```
+
+<ParamField path="EMAIL_HOST" type="string" default="smtp.gmail.com">
+  The SMTP server hostname. The example uses Gmail's SMTP server.
+</ParamField>
+
+<ParamField path="EMAIL_PORT" type="number" default="587">
+  The SMTP port. Use `587` for STARTTLS or `465` for SSL.
+</ParamField>
+
+<ParamField path="EMAIL_USERNAME" type="string">
+  The SMTP authentication username (usually your email address).
+</ParamField>
+
+<ParamField path="EMAIL_PASSWORD" type="string">
+  The SMTP authentication password or app-specific password.
+</ParamField>
+
+<ParamField path="EMAIL_FROM" type="string">
+  The sender email address used in the `From` header of outgoing messages.
+</ParamField>
+
+## WebSocket settings
+
+<ParamField path="SOCKET_HOST" type="string" default="localhost">
+  The hostname the WebSocket server binds to.
+</ParamField>
+
+<ParamField path="SOCKET_PORT" type="number" default="3000">
+  The port the WebSocket server listens on.
+</ParamField>
+
+These keys are read directly with `env('SOCKET_HOST')` and `env('SOCKET_PORT')` inside the socket library. There is no dedicated `config/socket.php` file.
+
+## Filesystem paths (`config/filesystem.php`)
+
+`config/filesystem.php` defines every directory path used by the framework. You do not normally need to change these, but you can override individual paths via the corresponding `env()` calls listed above.
+
+Access paths in your code:
+
+```php
+// Direct helper
+$storagePath = storagePath('app/public');     // 'storage/app/public'
+
+// Config class
+$viewsPath  = Config::filesystem('views.path');           // 'resources/views'
+$cacheViews = Config::filesystem('views.cache');          // 'storage/framework/views'
+$migrations = Config::filesystem('database.migrations');  // 'database/migrations'
+$logFile    = Config::filesystem('logs.file');            // 'storage/logs/app.log'
+```
+
+Key path groups defined in `config/filesystem.php`:
+
+| Group | Key | Default path |
+|---|---|---|
+| `storage` | `storage.path` | `storage` |
+| `storage` | `storage.app` | `storage/app` |
+| `storage` | `storage.public` | `storage/app/public` |
+| `storage` | `storage.files` | `storage/app/files` |
+| `storage` | `storage.qr` | `storage/app/qr` |
+| `views` | `views.path` | `resources/views` |
+| `views` | `views.cache` | `storage/framework/views` |
+| `cache` | `cache.path` | `storage/framework/cache` |
+| `logs` | `logs.path` | `storage/logs` |
+| `logs` | `logs.file` | `storage/logs/app.log` |
+| `database` | `database.migrations` | `database/migrations` |
+| `database` | `database.seeders` | `database/seeders` |
+| `scss` | `scss.path_input` | `resources/scss` |
+| `scss` | `scss.path_output` | `public/css` |
+
+## Authentication settings (`config/auth.php`)
+
+```php
+return [
+    'web' => [
+        'driver' => 'session',
+        'model'  => app\Models\User::class,
+    ],
+
+    'api' => [
+        'driver' => 'token',
+        'model'  => app\Models\User::class,
+    ],
+
+    'session' => [
+        'id_user'        => 'auth',
+        'remember_token' => 'token',
+    ],
+
+    'pam_auth' => false,
+];
+```
+
+Authentication is not controlled via `config.env`. To change the user model or auth driver, edit `config/auth.php` directly:
+
+- `web.driver` — `'session'` (default) uses PHP sessions for web authentication.
+- `api.driver` — `'token'` uses bearer token authentication for API routes.
+- `web.model` / `api.model` — the Eloquent-style model class that represents a user. Defaults to `app\Models\User`.
+- `session.id_user` — the session key that stores the authenticated user ID.
+- `session.remember_token` — the session/cookie key for the remember-me token.
+- `pam_auth` — set to `true` to enable PAM (Pluggable Authentication Modules) authentication.
+
+## Reading config in your code
+
+### `env()` helper
+
+Use `env()` to read any key from `config.env`:
+
+```php
+$appName = env('APP_NAME');
+$debug   = env('APP_DEBUG', false); // with default
+```
+
+### `Config` class
+
+Use the static `Config` class to read from the `config/` PHP files:
+
+```php
+use libs\Config;
+
+// Reads config/app.php → ['debug' => ...]
+$debug = Config::app('debug');
+
+// Reads config/database.php → ['host' => ...]
+$dbHost = Config::database('host');
+
+// Reads config/session.php → ['cookie' => ['name' => ...]]
+$cookieName = Config::session('cookie.name');
+
+// Reads config/filesystem.php → ['storage' => ['public' => ...]]
+$publicPath = Config::filesystem('storage.public');
+```
+
+The method name corresponds to the config filename (`Config::app()` → `config/app.php`). You can call any config file by name as long as it exists in the `config/` directory.

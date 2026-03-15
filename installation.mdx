@@ -1,0 +1,213 @@
+---
+title: "Installation"
+description: "Install MVC PHP with Composer for local development or deploy with Docker using the included Dockerfile."
+---
+
+## Prerequisites
+
+Before installing MVC PHP, ensure your environment meets these requirements:
+
+| Requirement | Version |
+|---|---|
+| PHP | ≤ 8.1 (tested up to 8.1.31) |
+| Composer | 2.x recommended |
+| MySQL / MariaDB | Any recent version |
+| Git | Any recent version |
+
+The framework also requires the following PHP extensions, which are installed automatically in the Docker image:
+
+- `pdo` and `pdo_mysql` — database access
+- `gd` — image manipulation
+- `zip` — archive handling
+
+## Installing with Composer
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/dogiloki/mvc-php.git my-app
+    cd my-app
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    composer install
+    ```
+
+    For production deployments, use the optimized install to generate a classmap:
+
+    ```bash
+    composer install --no-dev --optimize-autoloader
+    ```
+  </Step>
+
+  <Step title="Create the environment file">
+    ```bash
+    cp config.env.example config.env
+    ```
+
+    Edit `config.env` with your application name, app key, and database credentials. See the [Configuration](/configuration) page for a full reference of every key.
+  </Step>
+
+  <Step title="Run migrations">
+    ```bash
+    php manager migrate
+    ```
+  </Step>
+
+  <Step title="Start the dev server">
+    ```bash
+    php manager server
+    ```
+
+    Open `http://127.0.0.1:8000` in your browser.
+  </Step>
+</Steps>
+
+## Installing with Docker
+
+The repository ships with a `Dockerfile` configured for Apache on PHP 8.1. It is designed for deployment on platforms like Railway but works with any Docker runtime.
+
+### The Dockerfile
+
+```dockerfile
+FROM php:8.1-apache
+
+RUN apt-get update && apt-get install -y \
+    curl git unzip \
+    libpng-dev libjpeg-dev libfreetype6-dev libzip-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sS https://getcomposer.org/installer \
+    | php -- --install-dir=/usr/local/bin --filename=composer
+
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd zip pdo pdo_mysql
+
+COPY . /var/www/html/
+COPY docker/apache/default.conf /etc/apache2/sites-available/000-default.conf
+
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+WORKDIR /var/www/html
+RUN composer install --no-interaction --optimize-autoloader
+
+RUN a2enmod rewrite
+RUN chown -R www-data:www-data /var/www/html
+RUN chmod -R 775 /var/www/html
+
+EXPOSE 80
+```
+
+### Build and run locally
+
+```bash
+# Build the image
+docker build -t mvc-php .
+
+# Run the container
+docker run -p 8080:80 \
+  -e APP_NAME=my-app \
+  -e APP_KEY=my-secret-key \
+  -e DB_HOST=host.docker.internal \
+  -e DB_USER=root \
+  -e DB_PASSWORD=secret \
+  -e DB_DATABASE=mvc_php \
+  mvc-php
+```
+
+Open `http://localhost:8080`.
+
+<Note>
+  The Docker image reads configuration from environment variables at runtime, so you do not need to bake a `config.env` file into the image. Pass all `config.env` keys as `-e` flags or via your platform's environment variable settings.
+</Note>
+
+### Apache virtual host
+
+The Dockerfile copies a custom Apache config from `docker/apache/default.conf`. This file should set the document root to `/var/www/html/public` and enable `AllowOverride All` so the `.htaccess` in `public/` can handle URL rewriting.
+
+## Web server configuration
+
+MVC PHP requires all requests to be routed through `public/index.php`. The `public/.htaccess` file handles this for Apache.
+
+### Apache
+
+The `public/.htaccess` ships with the project and rewrites all requests to `index.php`. Ensure `mod_rewrite` is enabled:
+
+```bash
+a2enmod rewrite
+```
+
+Your virtual host needs `AllowOverride All` on the document root:
+
+```apache
+<Directory /var/www/html/public>
+    AllowOverride All
+</Directory>
+```
+
+### Nginx
+
+If you prefer Nginx, add a `try_files` directive in your server block:
+
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+```
+
+Set the document root to the `public/` subdirectory of your project.
+
+## Directory structure
+
+After installation, your project has the following layout:
+
+```
+my-app/
+├── app/
+│   ├── Controllers/        # Controller classes
+│   ├── Middlewares/        # Middleware classes
+│   ├── Models/             # ORM model classes
+│   ├── Services/           # Application service classes
+│   └── Kernel.php          # Service registration
+├── config/
+│   ├── app.php             # App settings
+│   ├── auth.php            # Auth drivers and models
+│   ├── database.php        # Database connection
+│   ├── email.php           # Mailer settings
+│   ├── filesystem.php      # Path definitions
+│   ├── session.php         # Session driver and cookie
+│   └── system.php          # OS detection
+├── database/
+│   ├── migrations/         # Migration files
+│   └── seeders/            # Seeder files
+├── libs/                   # Framework core libraries
+├── public/
+│   ├── .htaccess           # Apache rewrite rules
+│   ├── index.php           # Application entry point
+│   ├── assets/             # Static assets
+│   ├── css/                # Compiled CSS
+│   └── js/                 # JavaScript files
+├── resources/
+│   ├── lang/               # Localization files
+│   ├── scss/               # SCSS source files
+│   └── views/              # PHP view templates
+├── routes/
+│   ├── api.php             # API routes
+│   ├── test.php            # Test routes
+│   └── web.php             # Web routes
+├── storage/
+│   ├── app/                # Application file uploads
+│   ├── framework/          # Cached views, sessions
+│   └── logs/               # Log files by channel
+├── config.env              # Environment configuration (gitignored)
+├── config.env.example      # Environment template
+├── composer.json
+├── Dockerfile
+└── manager                 # CLI entry point
+```
+
+<Tip>
+  The `storage/` and `public/` directories must be writable by the web server process. When using Docker, the Dockerfile already sets `chmod -R 775` on the project root.
+</Tip>

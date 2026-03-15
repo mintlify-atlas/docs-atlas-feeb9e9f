@@ -1,0 +1,101 @@
+---
+title: "Introduction"
+description: "MVC PHP is a lightweight PHP framework that provides routing, an Eloquent-inspired ORM, controllers, views, and a suite of built-in libraries for building web applications."
+---
+
+## What is MVC PHP?
+
+MVC PHP (`dogiloki/mvc-php`) is a small but fully-featured PHP framework built around the Model-View-Controller pattern. It gives you a structured foundation for web applications without the overhead of larger frameworks, while still providing the core primitives you need: routing, database access, authentication, sessions, file storage, email, and a WebSocket server.
+
+All environment configuration lives in a single `config.env` file, keeping your application settings separate from your code and easy to manage across environments.
+
+## Architecture
+
+A request through MVC PHP flows as follows:
+
+```
+HTTP Request
+     │
+     ▼
+ public/index.php          ← Entry point, bootstraps autoloader and helpers
+     │
+     ▼
+ app/Kernel.php            ← Registers and runs services in order:
+     │                        1. ReportService   (error reporting)
+     │                        2. RulesService    (validation rules)
+     │                        3. MiddlewareService (global middleware)
+     │                        4. RoutingService  (loads route files)
+     │                        5. RouteService    (dispatches matched route)
+     ▼
+ routes/web.php            ← Define URL → closure or controller mappings
+     │
+     ▼
+ app/Controllers/          ← Handle request logic, call models, return responses
+     │
+     ▼
+ app/Models/               ← ORM models (extend libs\DB\Model)
+     │
+     ▼
+ resources/views/          ← PHP template files rendered by the View library
+     │
+     ▼
+HTTP Response
+```
+
+Configuration is loaded from `config.env` via the `Env` singleton and accessed anywhere through the `env()` helper or the `Config` class (`Config::app()`, `Config::database()`, etc.).
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Routing" icon="route">
+    Expressive routing with `Route::get()`, `Route::post()`, and other HTTP verbs. Routes support closures, controller classes, named routes, and middleware groups.
+  </Card>
+  <Card title="ORM" icon="database">
+    An Eloquent-inspired ORM (`libs\DB\Model`) with support for fillable fields, hidden attributes, relationships, and query building — no configuration beyond your model class.
+  </Card>
+  <Card title="Authentication" icon="lock">
+    Built-in session-based and API token authentication via `libs\Auth\Auth`. Role and permission support is provided through the `HasRoles` and `HasApiTokens` traits.
+  </Card>
+  <Card title="Views & Layouts" icon="window">
+    PHP-based template engine with layout inheritance (`@extends`), reusable components, SCSS compilation, and helpers like `view()`, `style()`, and `script()`.
+  </Card>
+  <Card title="Database migrations" icon="table">
+    A simple migration system driven by files in `database/migrations/`. Run `php manager migrate` to apply or roll back schema changes.
+  </Card>
+  <Card title="CLI manager" icon="terminal">
+    The `php manager` CLI lets you scaffold controllers, models, migrations, seeders, middleware, services, and validators, run a local dev server, compile SCSS, and back up databases.
+  </Card>
+  <Card title="Email" icon="envelope">
+    PHPMailer-backed email library configured through `config/email.php`. Send transactional email with a single method call.
+  </Card>
+  <Card title="HTTP client" icon="globe">
+    Guzzle-backed HTTP client library for making outbound requests to external APIs from within your application.
+  </Card>
+  <Card title="File storage" icon="folder">
+    File storage helpers built around the `storage/` directory structure, with separate paths for app files, public files, QR codes, and more.
+  </Card>
+  <Card title="WebSocket server" icon="plug">
+    A lightweight socket server inspired by Socket.io for real-time communication, configurable via `SOCKET_HOST` and `SOCKET_PORT`.
+  </Card>
+</CardGroup>
+
+## Bundled dependencies
+
+MVC PHP manages its dependencies with Composer. The following packages ship with the framework:
+
+| Package | Purpose |
+|---|---|
+| `guzzlehttp/guzzle` | HTTP client |
+| `phpmailer/phpmailer` | Email sending |
+| `intervention/image` | Image manipulation |
+| `fakerphp/faker` | Test data generation |
+| `scssphp/scssphp` | SCSS compilation |
+| `chillerlan/php-qrcode` | QR code generation |
+| `phpoffice/phpspreadsheet` | Spreadsheet export |
+| `phpseclib/phpseclib` | Cryptography / SSH |
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Get a working MVC PHP application running in your browser in minutes.
+</Card>

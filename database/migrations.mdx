@@ -1,0 +1,207 @@
+---
+title: "Migrations"
+description: "Version-control your database schema using migration files that run in order and can be rolled back."
+---
+
+Migrations let you define your database schema in PHP files that are committed alongside your application code. The framework tracks which files have been applied and runs only the new ones each time you migrate.
+
+## Creating a migration
+
+```bash
+php manager new migration CreateTablePost
+```
+
+This creates a timestamped file in `database/migrations/`, for example:
+`2024_06_01_120000_create_table_post.php`
+
+The generated skeleton:
+
+```php
+<?php
+
+use libs\DB\Migration;
+		
+return new class extends Migration{
+		
+    /**
+     * Run the migrations.
+     */
+    public function up(): void{
+        $this->table('post', function ($table) {
+            $table->id();
+            $table->timestamps();
+        });
+    }
+		
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void{
+        $this->dropIfExists('post');
+    }
+	
+};
+```
+
+Each migration is an anonymous class that extends `Migration`. `Migration` itself extends `Schema`, so all schema-building methods are available inside `up()` and `down()`.
+
+## Running migrations
+
+```bash
+# Apply all pending migrations
+php manager migrate
+
+# Roll back the most recent batch
+php manager migrate rollback
+```
+
+The framework stores applied migration names and batch numbers in a `migration` table it creates automatically on first run.
+
+## Schema methods
+
+All of the following are called on `$this` inside `up()` or `down()`.
+
+### Creating tables
+
+```php
+// Create table (fails if it already exists)
+$this->table('post', function ($table) { ... });
+
+// Create only if the table does not exist
+$this->tableIfNotExists('post', function ($table) { ... });
+```
+
+### Dropping tables
+
+```php
+$this->drop('post');           // Error if the table doesn't exist
+$this->dropIfExists('post');   // Safe — silently skips if missing
+```
+
+## Column types
+
+Inside the table callback, call methods on `$table` to add columns. Every column method returns a `Column` instance so you can chain modifiers.
+
+### Shorthand helpers
+
+| Method | SQL type | Notes |
+|---|---|---|
+| `$table->id()` | `BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY` | Sets primary key. Accepts optional column name, defaults to `id`. |
+| `$table->string($name)` | `VARCHAR(255) NOT NULL` | Alias for `varchar` with size 255. |
+| `$table->idForeign($name)` | `BIGINT NOT NULL` | Convenience for a foreign-key column — chain `.foreign()` to complete the constraint. |
+| `$table->timestamps()` | Two columns | Adds `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` and `updated_at TIMESTAMP NULL`. |
+
+### Generic add()
+
+Use `add($name, $type, $size)` for any SQL type:
+
+```php
+$table->add('body',       'text');
+$table->add('views',      'int');
+$table->add('score',      'decimal', '10,2');
+$table->add('status',     'enum',    "'draft','published'");
+$table->add('token',      'varchar', 64);
+$table->add('expired_at', 'timestamp');
+```
+
+## Column modifiers
+
+Chain these on any column:
+
+```php
+->nullable()                     // Allow NULL
+->default('value')               // DEFAULT 'value'
+->default(DB::flat('CURRENT_TIMESTAMP')) // Raw SQL default
+->autoIncrement()                // AUTO_INCREMENT
+->comment('description')        // COMMENT
+->primaryKey()                   // PRIMARY KEY
+->unique()                       // UNIQUE
+->index()                        // INDEX
+->fullText()                     // FULLTEXT
+->foreign('other_table', 'id')   // FOREIGN KEY REFERENCES
+```
+
+## Real migration examples
+
+<Tabs>
+  <Tab title="Users table">
+    ```php
+    public function up(): void{
+        $this->table('user', function ($table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('verified_email_at')->nullable();
+            $table->string('password');
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void{
+        $this->dropIfExists('user');
+    }
+    ```
+  </Tab>
+  <Tab title="Pivot table">
+    ```php
+    public function up(): void{
+        $this->table('user_permission', function ($table) {
+            $table->id();
+            $table->idForeign('id_user')->foreign('user', 'id');
+            $table->idForeign('id_permission')->foreign('permission', 'id');
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void{
+        $this->dropIfExists('user_permission');
+    }
+    ```
+  </Tab>
+  <Tab title="Token table">
+    ```php
+    public function up(): void{
+        $this->table('access_token', function ($table) {
+            $table->id();
+            $table->add('id_tokenable',   'bigint');
+            $table->string('type_tokenable');
+            $table->string('name');
+            $table->string('token')->unique();
+            $table->add('abilities',      'text');
+            $table->string('ip_address');
+            $table->string('user_agent');
+            $table->add('last_activity',  'timestamp')->default(DB::flat('CURRENT_TIMESTAMP'));
+            $table->add('expire_at',      'timestamp')->default(DB::flat('CURRENT_TIMESTAMP'));
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void{
+        $this->dropIfExists('access_token');
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Altering existing tables
+
+Use `append()` to add a column to an existing table, or `dropColumn()` to remove one:
+
+```php
+public function up(): void{
+    $this->tableIfNotExists('post', function ($table) {
+        // Creates the table if it doesn't exist yet
+        $table->id();
+        $table->timestamps();
+    });
+
+    // Add a column to an existing table
+    $this->append('post', function ($table) {
+        $table->add('summary', 'text')->nullable();
+    });
+}
+```
+
+<Note>
+Migration files are sorted alphabetically by filename. The timestamp prefix in the generated name guarantees chronological order.
+</Note>

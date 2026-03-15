@@ -1,0 +1,263 @@
+---
+title: "File Storage"
+description: "Upload files, generate QR codes, manipulate images, and export spreadsheets using the Storage library."
+---
+
+## Storage paths
+
+All storage paths are defined in `config/filesystem.php`. Use the `filesystem()` helper or `Config::filesystem()` to read them.
+
+```php
+// config/filesystem.php
+'storage' => [
+    'path'   => 'storage',
+    'app'    => 'storage/app',
+    'public' => 'storage/app/public',
+    'files'  => 'storage/app/files',
+    'qr'     => 'storage/app/qr',
+],
+```
+
+| Disk key | Path | Purpose |
+|----------|------|---------|
+| `path` | `storage/` | Root storage directory |
+| `app` | `storage/app/` | General application files |
+| `public` | `storage/app/public/` | Publicly accessible files |
+| `files` | `storage/app/files/` | Private uploaded files |
+| `qr` | `storage/app/qr/` | Generated QR code images |
+
+```php
+// Reading a path
+$publicPath = filesystem('storage.public'); // 'storage/app/public'
+$storagePath = storagePath('app/public');   // Uses APP_BASE_PATH prefix
+```
+
+## Uploading files
+
+The `Storage` class (`libs\Middle\Storage`) handles file uploads. It is a singleton — call `Storage::upload()` as a static method.
+
+<Steps>
+  <Step title="Retrieve the uploaded file from the request">
+    ```php
+    $file = $request->files('avatar'); // Returns $_FILES['avatar']
+    ```
+  </Step>
+  <Step title="Upload to a disk">
+    Pass the file array and a disk key from `config/filesystem.php`.
+
+    ```php
+    use libs\Middle\Storage;
+
+    $uploaded = Storage::upload($file, 'public');
+    ```
+
+    Returns an `UploaderFile` model instance on success, or `null` on failure.
+  </Step>
+  <Step title="Store the file reference">
+    ```php
+    if ($uploaded === null) {
+        return $response->abort(500, 'Upload failed');
+    }
+
+    // $uploaded->hash  — SHA1 hash used as the filename
+    // $uploaded->ext   — file extension
+    // $uploaded->mime  — MIME type
+    // $uploaded->size  — file size in bytes
+    // $uploaded->original_name  — original filename
+    // $uploaded->name()         — hash.ext
+
+    $user->avatar = $uploaded->hash;
+    $user->save();
+    ```
+  </Step>
+</Steps>
+
+### Image compression
+
+Enable automatic image compression when uploading. The `compressImage()` method accepts a boolean and an optional quality level (0–100).
+
+```php
+use libs\Middle\Storage;
+
+$storage = Storage::singleton();
+$storage->compressImage(true, 80); // 80% quality
+
+$uploaded = $storage->upload($file, 'public');
+```
+
+### Encrypted uploads
+
+Files can be encrypted at rest using the application key or a custom key.
+
+```php
+$storage = Storage::singleton();
+$storage->encrypt(); // Uses config app.key
+// or
+$storage->encrypt('my-32-char-key');
+
+$uploaded = $storage->upload($file, 'files');
+```
+
+<Warning>
+Decryption must use the same key that was used during upload. If the key changes, previously encrypted files will become unreadable.
+</Warning>
+
+### Downloading / serving files
+
+```php
+// Serve a file by its hash (looks up the UploaderFile record)
+Storage::getByHash($hash);
+
+// Serve a file directly
+$storage = Storage::singleton();
+$storage->download(); // Force browser download
+$storage->get($filename, 'public', 'download.pdf', 'application/pdf');
+
+// Delete by hash
+Storage::deleteHash($hash);
+```
+
+## QR code generation
+
+The `QRCode` class (`libs\Middle\QR\QRCode`) wraps [chillerlan/php-qrcode](https://github.com/chillerlan/php-qrcode) to generate PNG QR codes with optional embedded logos.
+
+### Basic QR code
+
+```php
+use libs\Middle\QR\QRCode;
+
+$qr = new QRCode();
+$qr->render('https://example.com');
+$qr->save('my-qr.png'); // Saved to storage/app/qr/my-qr.png
+```
+
+### QR code with a logo
+
+```php
+$qr = new QRCode();
+$qr->render('https://example.com', public_path('images/logo.png'));
+$qr->save('branded-qr.png');
+```
+
+### QR code method reference
+
+| Method | Description |
+|--------|-------------|
+| `render(string $data, string\|null $image = null): static` | Generate the QR code, optionally embedding a logo PNG |
+| `save(string $name = 'qr.png'): int\|false` | Save to `storage/app/qr/{name}` |
+| `output(): string` | Return raw PNG binary data |
+| `code(): QR` | Return the underlying QR code object |
+| `options(): QROptions` | Return the current options object |
+
+### Custom options
+
+Pass a `QROptions` instance to the constructor to override defaults.
+
+```php
+use chillerlan\QRCode\QRCode as QR;
+use chillerlan\QRCode\QROptions;
+use chillerlan\QRCode\Common\EccLevel;
+use libs\Middle\QR\QRCode;
+
+$options = new QROptions([
+    'version'    => QR::VERSION_AUTO,
+    'outputType' => QR::OUTPUT_IMAGE_PNG,
+    'eccLevel'   => EccLevel::H,
+    'scale'      => 6,
+]);
+
+$qr = new QRCode($options);
+$qr->render('https://example.com')->save('large-qr.png');
+```
+
+## Image manipulation
+
+The framework includes [Intervention Image](https://image.intervention.io/) (`intervention/image ^2.7`). Use it via `Intervention\Image\ImageManagerStatic`.
+
+```php
+use Intervention\Image\ImageManagerStatic as Image;
+
+// Resize an uploaded image
+$image = Image::make($uploadedFilePath);
+$image->resize(800, null, function ($constraint) {
+    $constraint->aspectRatio();
+    $constraint->upsize();
+});
+$image->save($uploadedFilePath, 85); // 85% quality
+
+// Crop to a fixed size
+$image = Image::make($path);
+$image->fit(400, 400);
+$image->save($outputPath);
+```
+
+<Note>
+`Storage::compressImage()` uses `Intervention\Image\ImageManagerStatic::make()` internally. For more complex transformations, call Intervention Image directly.
+</Note>
+
+## Spreadsheet export
+
+The framework includes [PhpSpreadsheet](https://phpspreadsheet.readthedocs.io/) (`phpoffice/phpspreadsheet ^3.6`) for generating Excel and CSV files.
+
+```php
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+$spreadsheet = new Spreadsheet();
+$sheet = $spreadsheet->getActiveSheet();
+
+// Write headers
+$sheet->setCellValue('A1', 'Name');
+$sheet->setCellValue('B1', 'Email');
+$sheet->setCellValue('C1', 'Created At');
+
+// Write rows
+$row = 2;
+foreach ($users as $user) {
+    $sheet->setCellValue('A' . $row, $user->name);
+    $sheet->setCellValue('B' . $row, $user->email);
+    $sheet->setCellValue('C' . $row, $user->created_at);
+    $row++;
+}
+
+// Save to storage
+$path = storagePath('app/files/users.xlsx');
+$writer = new Xlsx($spreadsheet);
+$writer->save($path);
+
+// Serve the file for download
+return $response->file($path);
+```
+
+## Public vs private storage
+
+<CardGroup cols={2}>
+  <Card title="Public storage" icon="globe">
+    Files saved to `storage/app/public/` can be served directly by your web server with a symlink from `public/storage`. Suitable for profile pictures and other non-sensitive assets.
+  </Card>
+  <Card title="Private storage" icon="lock">
+    Files saved to `storage/app/files/` are not web-accessible. Serve them through a controller using `Storage::get()` or `Storage::getByHash()`, which lets you enforce authentication before delivery.
+  </Card>
+</CardGroup>
+
+## Low-level file operations
+
+For reading and writing arbitrary files use `libs\Middle\File`.
+
+```php
+use libs\Middle\File;
+
+// Open a file (mode defaults to 'r+')
+$file = new File(storagePath('app/data.txt'));
+
+$contents = $file->read();       // Read entire file
+$file->write('new content');     // Overwrite
+$file->append('\nmore text');    // Append
+$file->copy('/other/path.txt');  // Copy
+$file->close();                  // Release the file handle
+
+// Static existence check
+if (File::exists($path)) {
+    // ...
+}
+```

@@ -1,0 +1,123 @@
+---
+title: "HTTP Client"
+description: "Make outgoing HTTP requests to external APIs using the built-in HTTP client backed by Guzzle."
+---
+
+The `HTTP` class (`libs\HTTP\HTTP`) provides static methods for making outgoing HTTP requests. It wraps [Guzzle](https://docs.guzzlephp.org/) and delivers the decoded JSON response to a callback you supply.
+
+## Setting a base URL
+
+Set `HTTP::$host` once — typically in a service provider or controller constructor — and every subsequent request will prepend it automatically.
+
+```php
+use libs\HTTP\HTTP;
+
+HTTP::$host = 'https://api.example.com';
+```
+
+## Making requests
+
+All four methods share the same signature:
+
+```
+HTTP::get(string $uri, callable $action, array $params = []): mixed
+HTTP::post(string $uri, callable $action, array $params = []): mixed
+HTTP::put(string $uri, callable $action, array $params = []): mixed
+HTTP::delete(string $uri, callable $action, array $params = []): mixed
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `$uri` | `string` | Path appended to `HTTP::$host` |
+| `$action` | `callable` | Callback that receives the decoded response body (or `null` on failure) |
+| `$params` | `array` | Body parameters sent as JSON (ignored for GET requests) |
+
+<Note>
+All requests set `Content-Type: application/json`. SSL verification is disabled by default — enable it for production by modifying the Guzzle client options in `HTTP::request()`.
+</Note>
+
+## The callback pattern
+
+The second argument to every method is a callback. The framework calls it with the decoded response body (`stdClass`) on success, or `null` when an exception is thrown.
+
+```php
+$result = HTTP::get('/users/42', function ($response) {
+    if ($response === null) {
+        // Request failed or server was unreachable
+        return ['error' => 'Request failed'];
+    }
+    return $response;
+});
+```
+
+## Error handling
+
+When Guzzle throws any `\Exception` (network error, timeout, 4xx/5xx response), the library catches it silently and calls your callback with `null`. Check for `null` inside the callback to handle the failure path.
+
+```php
+$data = HTTP::post('/orders', function ($response) {
+    if ($response === null) {
+        return null; // Caller can check for null
+    }
+    return $response->order;
+}, [
+    'product_id' => 7,
+    'quantity'   => 2,
+]);
+
+if ($data === null) {
+    abort(503, 'Upstream service unavailable');
+}
+```
+
+## Full example
+
+The example below fetches a user profile from an external REST API and returns the result as JSON from a controller action.
+
+```php
+use libs\HTTP\HTTP;
+
+class UserController
+{
+    public function show($request, $response)
+    {
+        HTTP::$host = 'https://jsonplaceholder.typicode.com';
+
+        $user = HTTP::get('/users/' . $request->input('id'), function ($data) {
+            if ($data === null) {
+                return null;
+            }
+            return [
+                'id'    => $data->id,
+                'name'  => $data->name,
+                'email' => $data->email,
+            ];
+        });
+
+        if ($user === null) {
+            return $response->abort(502, 'Could not reach upstream API');
+        }
+
+        return $response->json($user);
+    }
+}
+```
+
+## Sending POST data
+
+Parameters are JSON-encoded and placed in the request body automatically for `POST`, `PUT`, and `DELETE` requests.
+
+```php
+HTTP::$host = 'https://api.example.com';
+
+$created = HTTP::post('/products', function ($response) {
+    return $response?->id ?? null;
+}, [
+    'name'  => 'Widget',
+    'price' => 9.99,
+]);
+```
+
+<Tip>
+For requests that need custom headers, authentication tokens, or different content types, use Guzzle directly via `new \GuzzleHttp\Client()`. The `HTTP` class is intended for simple JSON API calls.
+</Tip>

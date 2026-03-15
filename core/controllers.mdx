@@ -1,0 +1,192 @@
+---
+title: "Controllers"
+description: "Organize request handling logic into controller classes that extend the base Controller."
+---
+
+Controllers group related request-handling logic into a single class. Each public method on a controller is an action that can be mapped to a route.
+
+## Creating a controller
+
+Use the `manager` CLI to scaffold a new controller:
+
+```bash
+php manager make:controller UserController
+```
+
+This creates `app/Controllers/UserController.php` from the built-in template:
+
+```php app/Controllers/UserController.php
+<?php
+
+namespace app\Controllers;
+
+use app\Controllers\Controller;
+
+class UserController extends Controller {
+
+}
+```
+
+All controllers extend `app\Controllers\Controller`, which provides the JSON response builder helpers.
+
+## Routing to a controller
+
+Reference a controller action in a route using the `"ClassName@method"` string format:
+
+```php routes/web.php
+use libs\Router\Route;
+
+Route::get('/users', 'UserController@index');
+Route::get('/users/{id}', 'UserController@show');
+Route::post('/users', 'UserController@store');
+Route::put('/users/{id}', 'UserController@update');
+Route::delete('/users/{id}', 'UserController@destroy');
+```
+
+The framework resolves the class from the `app/Controllers/` namespace automatically.
+
+## Request injection
+
+Every action receives the current `Request` instance as its first argument:
+
+```php
+use libs\HTTP\Request;
+
+class UserController extends Controller {
+
+    public function show(Request $request) {
+        $id = $request->id; // URI parameter {id}
+    }
+
+    public function store(Request $request) {
+        $name  = $request->input('name');  // any source
+        $email = $request->post('email');  // POST body only
+    }
+
+}
+```
+
+See [Request methods](#request-methods) below for all available accessors.
+
+## Return values
+
+Return a string, a rendered view, or a JSON payload from an action:
+
+<Tabs>
+  <Tab title="View">
+    ```php
+    public function index(Request $request) {
+        return view('users.index', [
+            'title' => 'User list',
+        ]);
+    }
+    ```
+  </Tab>
+  <Tab title="JSON response">
+    ```php
+    public function index(Request $request) {
+        $users = User::all();
+        return json(['users' => $users]);
+    }
+    ```
+  </Tab>
+  <Tab title="Redirect">
+    ```php
+    public function store(Request $request) {
+        // ... save logic
+        return redirect(route('users.index'));
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Structured JSON responses
+
+The base `Controller` class provides a fluent builder for a consistent API envelope:
+
+```php
+return $this
+    ->setCode(201)
+    ->setStatus('success')
+    ->setData($user)
+    ->setMessage('User created')
+    ->response();
+```
+
+The `response()` method calls the global `json()` helper and outputs:
+
+```json
+{
+  "status": "success",
+  "data": { ... },
+  "message": "User created",
+  "errors": [],
+  "meta": null
+}
+```
+
+<Tip>
+Use the structured response builder for API controllers so every endpoint returns a consistent envelope.
+</Tip>
+
+## Request methods
+
+The `Request` object exposes the following methods inside any action:
+
+| Method | Description |
+|---|---|
+| `$request->input($key)` | Read from any input source (GET, POST, PUT, URI params) |
+| `$request->get($key)` | Read from query string |
+| `$request->post($key)` | Read from POST body |
+| `$request->put($key)` | Read from PUT body |
+| `$request->all()` | All input as an associative array |
+| `$request->files($key)` | Uploaded file by key |
+| `$request->header($key)` | HTTP header value |
+| `$request->bearerToken()` | Extract Bearer token from `Authorization` header |
+| `$request->method()` | Current HTTP method string |
+| `$request->path()` | Request URI |
+| `$request->session()` | Session instance |
+| `$request->cookie()` | Cookie instance |
+| `Request::ip()` | Client IP address |
+| `Request::userAgent()` | Client user-agent string |
+
+## Full controller example
+
+```php app/Controllers/PostController.php
+<?php
+
+namespace app\Controllers;
+
+use app\Controllers\Controller;
+use libs\HTTP\Request;
+
+class PostController extends Controller {
+
+    public function index(Request $request) {
+        return view('posts.index');
+    }
+
+    public function show(Request $request) {
+        $id = $request->id;
+        return view('posts.show', ['id' => $id]);
+    }
+
+    public function store(Request $request) {
+        $title = $request->input('title');
+        $body  = $request->input('body');
+        // ... save logic
+        return $this
+            ->setCode(201)
+            ->setData(['title' => $title])
+            ->setMessage('Post created')
+            ->response();
+    }
+
+    public function destroy(Request $request) {
+        $id = $request->id;
+        // ... delete logic
+        return redirect(route('posts.index'));
+    }
+
+}
+```

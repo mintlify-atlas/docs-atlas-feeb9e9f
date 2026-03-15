@@ -1,0 +1,149 @@
+---
+title: "Authentication Overview"
+description: "Learn how MVC PHP handles authentication with DB-based and PAM-based drivers, API tokens, and role/permission management."
+---
+
+MVC PHP ships with a flexible authentication system built around a single `Auth` facade that delegates to one of two drivers depending on your configuration: `AuthDB` for database-backed authentication and `AuthPAM` for system-level PAM authentication.
+
+## How driver selection works
+
+`Auth::instance()` reads the `pam_auth` flag from `config/auth.php` and returns the appropriate driver class.
+
+```php
+// libs/Auth/Auth.php
+class Auth extends Singleton {
+    public static function instance() {
+        return new ((new self())->extends())();
+    }
+
+    public function __construct() {
+        $this->extends = config()->auth('pam_auth') ? AuthPAM::class : AuthDB::class;
+    }
+}
+```
+
+Every public method on `Auth` (`attempt`, `login`, `logout`, `user`, `check`, `id`, `token`) is forwarded to the active driver via the `Singleton` base class.
+
+## Configuration
+
+All authentication settings live in `config/auth.php`:
+
+```php
+return [
+
+    'web' => [
+        'driver' => 'session',
+        'model'  => app\Models\User::class,
+    ],
+
+    'api' => [
+        'driver' => 'token',
+        'model'  => app\Models\User::class,
+    ],
+
+    'session' => [
+        'id_user'        => 'auth',
+        'remember_token' => 'token',
+    ],
+
+    'pam_auth' => false,
+
+];
+```
+
+| Key | Description |
+|---|---|
+| `web.driver` | Always `session` for browser-based flows |
+| `web.model` | Eloquent model used to look up users |
+| `api.driver` | Always `token` for API flows |
+| `api.model` | Model used when resolving a bearer token |
+| `session.id_user` | Session key that stores the authenticated user's primary key |
+| `session.remember_token` | Session key used for the remember token |
+| `pam_auth` | Set to `true` to switch the driver to `AuthPAM` |
+
+## Authentication drivers
+
+<CardGroup cols={2}>
+  <Card title="AuthDB" icon="database">
+    Authenticates against a database table. Verifies passwords with `Secure::verifyPassword()` and persists the user's ID in the session. Default when `pam_auth` is `false`.
+  </Card>
+  <Card title="AuthPAM" icon="server">
+    Delegates to the system's Pluggable Authentication Modules via `pam_auth()`. Stores the username string in the session instead of a model ID. Requires `pam_auth => true`.
+  </Card>
+</CardGroup>
+
+Both drivers extend `AuthFactory` and implement the same interface:
+
+| Method | Description |
+|---|---|
+| `_attempt($credentials)` | Validate credentials and log in on success |
+| `_login($user, $token)` | Store the user in the session |
+| `_logout()` | Remove the user from the session |
+| `_user()` | Return the currently authenticated user |
+| `_id()` | Return the authenticated user's identifier |
+| `_check()` | Return `true` if a user is authenticated |
+
+## API tokens — HasApiTokens
+
+Add the `HasApiTokens` trait to any model to enable token-based authentication for that model:
+
+```php
+use libs\Auth\HasApiTokens;
+
+class User extends Model {
+    use HasApiTokens;
+}
+```
+
+The trait adds `createToken()`, `tokens()`, `token()`, `deleteToken()`, `deleteTokens()`, `hasToken()`, `hasTokens()`, `tokenCan()`, and `tokenAbilities()` to the model. Tokens are stored in the `access_token` table via the `AccessToken` model.
+
+<Note>
+  Tokens are created with a 1-year expiry and `["*"]` abilities by default. The `AuthenticateApi` middleware automatically checks expiry and deletes expired tokens.
+</Note>
+
+## Roles and permissions — HasRoles
+
+Add the `HasRoles` trait to your `User` model to enable fine-grained access control:
+
+```php
+use libs\Permission\HasRoles;
+
+class User extends Model {
+    use HasRoles;
+}
+```
+
+The trait provides:
+
+| Method | Description |
+|---|---|
+| `roles()` | Many-to-many relationship returning the user's `Role` models |
+| `permissions()` | Many-to-many relationship returning the user's `Permission` models |
+| `assignRole($names)` | Assign one or more roles by name |
+| `assignPermission($names)` | Assign one or more permissions by name |
+| `is($name_role)` | Return `true` if the user has the given role |
+| `can($name_permission)` | Return `true` if the user has the given permission |
+
+Roles and permissions are stored across four tables: `role`, `permission`, `user_role`, and `user_permission`.
+
+```php
+// Assign roles
+$user->assignRole('admin', 'editor');
+
+// Check role
+if ($user->is('admin')) { ... }
+
+// Check permission
+if ($user->can('publish-posts')) { ... }
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Session authentication" icon="key" href="/auth/session-auth">
+    Login flows, middleware, and session-based user state.
+  </Card>
+  <Card title="API tokens" icon="lock" href="/auth/api-tokens">
+    Creating and validating bearer tokens for API authentication.
+  </Card>
+</CardGroup>

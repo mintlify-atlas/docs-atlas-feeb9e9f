@@ -1,0 +1,132 @@
+---
+title: "Database overview"
+description: "How MVC PHP connects to MySQL using a PDO singleton, the Table query builder, and the Schema layer."
+---
+
+MVC PHP's database layer is built on top of PHP's native PDO extension. A single `DB` class acts as the connection singleton and exposes helper methods for building queries, executing raw SQL, and managing transactions. All database configuration comes from `config/database.php`, which reads values from your `.env` file.
+
+## Configuration
+
+Set your database credentials in `.env`:
+
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=my_app
+DB_USER=root
+DB_PASSWORD=secret
+```
+
+These are mapped in `config/database.php`:
+
+```php
+<?php
+
+return [
+    'host'     => env('DB_HOST'),
+    'user'     => env('DB_USER'),
+    'password' => env('DB_PASSWORD'),
+    'database' => env('DB_DATABASE'),
+    'port'     => env('DB_PORT'),
+    'engine'   => 'InnoDB',
+    'charset'  => 'utf8mb4',
+];
+```
+
+<Note>
+If the specified database does not exist when the application first connects, the CLI will prompt you to create it automatically.
+</Note>
+
+## DB class
+
+The `DB` class (`libs\DB\DB`) is the central entry point for all database interactions. It maintains a single PDO connection for the entire request lifecycle.
+
+### DB::table()
+
+Returns a `Table` query-builder instance scoped to the given table name.
+
+```php
+$results = DB::table('user')->select()->get();
+```
+
+See [Query builder](/database/query-builder) for the full API.
+
+### DB::execute()
+
+Prepares and executes a raw SQL string with optional bound parameters. Returns the `PDOStatement` on success.
+
+```php
+$stmt = DB::execute(
+    'SELECT * FROM user WHERE email = ?',
+    ['alice@example.com']
+);
+
+$rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+```
+
+Parameterised placeholders (`?`) are bound positionally. Named placeholders (`:name`) are also supported.
+
+### DB::transation()
+
+Wraps one or more operations in a database transaction. Accepts either a closure or an array of `['sql' => ..., 'params' => [...]]` pairs. Automatically commits on success and rolls back on failure.
+
+<Tabs>
+  <Tab title="Closure">
+    ```php
+    DB::transation(function ($db) {
+        DB::execute('UPDATE account SET balance = balance - 100 WHERE id = 1');
+        DB::execute('UPDATE account SET balance = balance + 100 WHERE id = 2');
+    });
+    ```
+  </Tab>
+  <Tab title="Array">
+    ```php
+    DB::transation([
+        ['sql' => 'INSERT INTO log (message) VALUES (?)', 'params' => ['transfer started']],
+        ['sql' => 'UPDATE account SET balance = balance - 100 WHERE id = ?', 'params' => [1]],
+    ]);
+    ```
+  </Tab>
+</Tabs>
+
+`transation()` returns `true` if the transaction commits and `false` if it rolls back.
+
+### DB::flat()
+
+Wraps a string in a `Flat` object so it is injected into the query **as a raw SQL expression** rather than as a bound parameter. Use this for SQL functions, column references, or any literal value that must not be quoted.
+
+```php
+// Correct — CURRENT_TIMESTAMP is inserted literally
+$table->add('created_at', 'timestamp')->default(DB::flat('CURRENT_TIMESTAMP'));
+
+// Use in a query
+$user = DB::table('user')
+    ->select(DB::flat('COUNT(*) as total'))
+    ->first();
+
+echo $user['total'];
+```
+
+<Warning>
+Never pass user-supplied input through `DB::flat()`. Values wrapped in `Flat` are not escaped.
+</Warning>
+
+### DB::getConnection()
+
+Returns the underlying PDO instance. Use this when you need direct PDO access, for example to call `lastInsertId()`.
+
+```php
+$pdo = DB::getConnection();
+$lastId = $pdo->lastInsertId();
+```
+
+## How the singleton works
+
+`DB` extends `\PDO` and uses a private static `$instance` property. The first call to any `DB` method that needs a connection triggers `DB::singleton()`, which:
+
+1. Reads credentials from `Config::database()`.
+2. Opens a PDO connection with the configured host and port.
+3. Sets the character set (`utf8mb4` by default).
+4. Selects the target database.
+
+Every subsequent call reuses the same connection object.

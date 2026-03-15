@@ -1,0 +1,215 @@
+---
+title: "Relationships"
+description: "Define hasOne, hasMany, and manyToMany relationships between models and access related data as model properties."
+---
+
+Relationships are defined as methods on a model class. Each method returns a `Relation` object whose `query` property is a pre-built `Table` chain ready to fetch related records.
+
+When you access a relationship **as a property** (not a method call), the framework automatically executes the query and returns the result:
+
+- `hasMany` and `manyToMany` → returns an array of model instances.
+- `hasOne` → returns a single model instance or `null`.
+
+## hasOne
+
+Use `hasOne` when this model's table has a foreign key pointing to the related table.
+
+```php
+protected function hasOne($table, $id_table, $id_table_secundary = null): Relation
+```
+
+| Parameter | Description |
+|---|---|
+| `$table` | Class name (FQCN) of the related model |
+| `$id_table` | The column on **this** model's table that holds the foreign key |
+| `$id_table_secundary` | The column on the related table to match against (defaults to the related model's primary key) |
+
+### Example — profile belongs to user
+
+```php
+class Profile extends Model{
+
+    protected $table = "profile";
+    protected $fillable = ["id_user", "bio", "avatar"];
+
+    // profile.id_user → user.id
+    public function user(){
+        return $this->hasOne(User::class, 'id_user');
+    }
+
+}
+```
+
+```php
+$profile = Profile::find(1);
+echo $profile->user->name; // triggers the query, returns a User instance
+```
+
+## hasMany
+
+Use `hasMany` when the **related** table has a foreign key pointing back to this model.
+
+```php
+protected function hasMany($table, $id_table_secundary, $id_table = null): Relation
+```
+
+| Parameter | Description |
+|---|---|
+| `$table` | Class name (FQCN) of the related model |
+| `$id_table_secundary` | The column on the **related** table that holds the foreign key to this model |
+| `$id_table` | The column on this model to match against (defaults to `$primary_key`) |
+
+### Example — user has many posts
+
+```php
+class User extends Model{
+
+    protected $table = "user";
+    protected $fillable = ["name", "email", "password"];
+    protected $hidden   = ["password"];
+
+    // post.author_id → user.id
+    public function posts(){
+        return $this->hasMany(Post::class, 'author_id');
+    }
+
+}
+```
+
+```php
+$user = User::find(1);
+foreach ($user->posts as $post) {
+    echo $post->title . PHP_EOL;
+}
+```
+
+## manyToMany
+
+Use `manyToMany` when a pivot/join table links two models.
+
+```php
+protected function manyToMany(
+    $table,
+    $table_middle,
+    $id_table,
+    $id_table_middle
+): Relation
+```
+
+| Parameter | Description |
+|---|---|
+| `$table` | Class name (FQCN) of the related model |
+| `$table_middle` | Class name (FQCN) of the pivot model |
+| `$id_table` | Column on the pivot that links back to **this** model |
+| `$id_table_middle` | Column on the pivot that links to the **related** model |
+
+### Example — user has many roles through user_role
+
+```php
+class UserRole extends Model{
+    protected $table = "user_role";
+}
+
+class Role extends Model{
+    protected $table = "role";
+    protected $fillable = ["name", "description"];
+}
+
+class User extends Model{
+
+    protected $table   = "user";
+    protected $fillable = ["name", "email", "password"];
+    protected $hidden   = ["password"];
+
+    // user_role.id_user links to user.id
+    // user_role.id_role  links to role.id
+    public function roles(){
+        return $this->manyToMany(
+            Role::class,
+            UserRole::class,
+            'id_user',
+            'id_role'
+        );
+    }
+
+}
+```
+
+```php
+$user = User::find(1);
+foreach ($user->roles as $role) {
+    echo $role->name . PHP_EOL;
+}
+```
+
+## Pivot operations
+
+For `manyToMany` relations, calling the relationship **as a method** (not a property) gives you a `Relation` object with additional helpers:
+
+### attach()
+
+Inserts rows into the pivot table:
+
+```php
+$user = User::find(1);
+$user->roles()->attach([2, 3]);          // attach role IDs 2 and 3
+$user->roles()->attach(4, ['level' => 'editor']); // with pivot data
+```
+
+### detach()
+
+Removes rows from the pivot table:
+
+```php
+$user->roles()->detach(2);       // remove one
+$user->roles()->detach([2, 3]);  // remove multiple
+```
+
+### sync()
+
+Replaces all current pivot rows with the given IDs in a single transaction:
+
+```php
+$user->roles()->sync([1, 3, 5]); // user now has exactly roles 1, 3, and 5
+```
+
+### exists()
+
+Checks whether specific IDs are already attached:
+
+```php
+if ($user->roles()->exists(2)) {
+    echo 'User has role 2';
+}
+```
+
+### withPivot()
+
+Includes extra pivot columns in the query result:
+
+```php
+$roles = $user->roles()->withPivot('level', 'granted_at')->query->get();
+```
+
+## Eager loading with with()
+
+Pass relation method names to `with()` to pre-load relations for every result in a collection, avoiding N+1 query problems:
+
+```php
+$users = User::with('posts', 'roles')->get();
+
+foreach ($users as $user) {
+    // 'posts' and 'roles' are already loaded — no extra queries
+    echo $user->posts[0]->title;
+}
+```
+
+Nested relations use dot notation:
+
+```php
+$users = User::with('posts.comments')->get();
+```
+
+<Note>
+Relation methods must be `public` for the `__get()` magic accessor to dispatch them correctly when accessed as properties.
+</Note>

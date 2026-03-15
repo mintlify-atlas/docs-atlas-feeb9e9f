@@ -1,97 +1,75 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "MVC PHP"
+description: "A lightweight PHP MVC framework with routing, ORM, middleware, authentication, and a powerful CLI manager."
 ---
 
-## Setting up
+## What is MVC PHP?
 
-Get your documentation site up and running in minutes.
+MVC PHP is a prototype framework built to provide a structured MVC architecture for PHP applications. It ships with everything you need to build modern web applications — from a clean routing layer and an Eloquent-inspired ORM to session authentication, API tokens, a WebSocket server, and a CLI scaffolding tool.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a working MVC PHP application running in under 5 minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Clone, configure, and serve your first project.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Routing" icon="route" href="/core/routing">
+    Define GET, POST, PUT, and DELETE routes with middleware and named URLs.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="ORM & Models" icon="database" href="/database/models">
+    Interact with your database using an Eloquent-inspired model layer.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Key features
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="MVC Architecture" icon="layer-group">
+    Clean separation of concerns with controllers, models, and blade-style views.
+  </Card>
+  <Card title="Eloquent-inspired ORM" icon="table">
+    HasOne, HasMany, and ManyToMany relationships with a fluent query builder.
+  </Card>
+  <Card title="Migrations & Seeders" icon="arrows-rotate">
+    Version-controlled database schema with up/down migrations and data seeders.
+  </Card>
+  <Card title="Authentication" icon="lock">
+    Session-based login and API Bearer token auth with optional PAM support.
+  </Card>
+  <Card title="Middleware Pipeline" icon="filter">
+    Attach middleware to individual routes or groups for request filtering.
+  </Card>
+  <Card title="CLI Manager" icon="terminal">
+    Scaffold controllers, models, migrations, seeders, middleware, and more.
+  </Card>
+  <Card title="HTTP Client" icon="globe">
+    Built-in Guzzle-backed client for outbound HTTP requests.
+  </Card>
+  <Card title="WebSocket Server" icon="plug">
+    Simple Socket.io-inspired server for real-time features.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Explore the docs
 
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={3}>
+  <Card title="Core Concepts" icon="book" href="/core/routing">
+    Routing, controllers, middleware, and views.
+  </Card>
+  <Card title="Database" icon="database" href="/database/overview">
+    ORM, query builder, migrations, seeders, and relations.
+  </Card>
+  <Card title="Authentication" icon="shield" href="/auth/overview">
+    Session auth, API tokens, and role-based permissions.
+  </Card>
+  <Card title="Libraries" icon="puzzle-piece" href="/libs/http-client">
+    HTTP client, validation, sessions, storage, sockets, and email.
+  </Card>
+  <Card title="CLI Manager" icon="terminal" href="/cli/overview">
+    All available manager commands and how to use them.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Environment variables and config file reference.
+  </Card>
+</CardGroup>

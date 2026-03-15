@@ -1,80 +1,166 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get a working MVC PHP application running in under 5 minutes."
 ---
 
-## Get started in three steps
+This guide takes you from zero to a running MVC PHP app. You'll clone the project, configure your environment, run migrations, and open your first page in the browser.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before starting, make sure you have:
+- PHP ≤ 8.1
+- Composer
+- MySQL or MariaDB
+- Git
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Clone the repository">
+    Clone MVC PHP and enter the project directory:
 
-### Step 2: Deploy your changes
+    ```bash
+    git clone https://github.com/dogiloki/mvc-php.git
+    cd mvc-php
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Install PHP dependencies">
+    Install all Composer packages:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    composer install
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    This installs Guzzle, PHPMailer, Intervention Image, Faker, scssphp, and more.
+  </Step>
 
-### Step 3: Go live
+  <Step title="Configure your environment">
+    Copy the example environment file and fill in your values:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    cp config.env.example config.env
+    ```
+
+    Open `config.env` and update the database credentials at minimum:
+
+    ```ini config.env
+    APP_NAME=localhost
+    APP_KEY=your-secret-key
+    APP_HOST=localhost
+    APP_DEBUG=true
+
+    DB_HOST=localhost
+    DB_PORT=3306
+    DB_USER=root
+    DB_PASSWORD=your_password
+    DB_DATABASE=mvc_php
+    ```
+
+    <Note>
+      Alternatively, run `php manager create` to auto-generate `config.env` from
+      `config.env.example` along with any other required initial files.
+    </Note>
+  </Step>
+
+  <Step title="Run migrations">
+    Create your database tables by running the migrations:
+
+    ```bash
+    php manager migrate
+    ```
+
+    This executes all migration files found in `database/migrations/` in order.
+  </Step>
+
+  <Step title="Start the development server">
+    Launch the built-in PHP server pointed at the `public/` directory:
+
+    ```bash
+    php manager server
+    ```
+
+    The server starts on `http://127.0.0.1:8000` by default. Open that URL in your browser — you should see the home page.
+
+    <Tip>
+      To use a different port, pass it as an argument: `php manager server 9000`
+    </Tip>
+  </Step>
+</Steps>
+
+## Your first route
+
+Open `routes/web.php`. You'll see the default route that renders the home view:
+
+```php routes/web.php
+<?php
+
+use libs\Router\Route;
+
+Route::get('/', function() {
+    return view('home');
+})->name('home');
+```
+
+Add a new route below it:
+
+```php routes/web.php
+Route::get('/hello', function() {
+    return view('hello', ['name' => 'World']);
+})->name('hello');
+```
+
+Then create the view file at `resources/views/hello.php`:
+
+```php resources/views/hello.php
+<h1>Hello, <?= $name ?>!</h1>
+```
+
+Visit `http://127.0.0.1:8000/hello` to see it in action.
+
+## Your first controller
+
+Use the CLI to scaffold a controller:
+
+```bash
+php manager new controller HelloController
+```
+
+This creates `app/Controllers/HelloController.php`. Edit it to add an action:
+
+```php app/Controllers/HelloController.php
+<?php
+
+namespace App\Controllers;
+
+use libs\HTTP\Request;
+
+class HelloController {
+
+    public function index(Request $request) {
+        return view('hello', ['name' => $request->get('name') ?? 'World']);
+    }
+
+}
+```
+
+Then point a route at it:
+
+```php routes/web.php
+Route::get('/hello', 'HelloController@index')->name('hello');
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Routing" icon="route" href="/core/routing">
+    Learn about route parameters, groups, and middleware.
+  </Card>
+  <Card title="Controllers" icon="code" href="/core/controllers">
+    Understand how controllers handle requests and return responses.
+  </Card>
+  <Card title="Models & ORM" icon="database" href="/database/models">
+    Query your database using the Eloquent-inspired ORM.
+  </Card>
+  <Card title="CLI Manager" icon="terminal" href="/cli/commands">
+    Explore all available scaffolding and utility commands.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

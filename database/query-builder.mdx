@@ -1,0 +1,259 @@
+---
+title: "Query builder"
+description: "Build and execute SQL queries fluently using the Table class returned by DB::table()."
+---
+
+`DB::table($name)` returns a `Table` instance (`libs\DB\Table`). Every method on `Table` returns `$this`, so calls chain together until you call a terminal method (`get()`, `first()`, `row()`, `execute()`, etc.).
+
+## Starting a query
+
+```php
+$table = DB::table('user');
+```
+
+From this point you can call any combination of the methods below before executing.
+
+## Selecting columns
+
+```php
+// All columns (default)
+DB::table('user')->select()->get();
+
+// Specific columns
+DB::table('user')->select('id', 'name', 'email')->get();
+
+// Comma-separated string
+DB::table('user')->select('id, name, email')->get();
+
+// Raw SQL expression
+DB::table('user')->select(DB::flat('COUNT(*) as total'))->first();
+```
+
+## WHERE conditions
+
+### where()
+
+```php
+// Equality shorthand (two args)
+DB::table('user')->select()->where('id', 1)->first();
+
+// Explicit operator (three args)
+DB::table('user')->select()->where('age', '>', 18)->get();
+
+// Array of column => value pairs (AND-joined)
+DB::table('user')->select()->where(['status' => 'active', 'verified' => 1])->get();
+
+// Closure for grouped conditions
+DB::table('user')->select()->where(function ($q) {
+    $q->where('role', 'admin')->or()->where('role', 'moderator');
+})->get();
+```
+
+### whereNot()
+
+Not a dedicated method — pass an explicit operator to `where()`:
+
+```php
+DB::table('user')->select()->where('deleted_at', '!=', null)->get();
+```
+
+### whereLike()
+
+```php
+DB::table('user')->select()->whereLike('name', '%alice%')->get();
+```
+
+### whereBetween() / whereNotBetween()
+
+```php
+DB::table('order')->select()->whereBetween('total', [100, 500])->get();
+DB::table('order')->select()->whereNotBetween('total', [100, 500])->get();
+```
+
+### whereColumn()
+
+Compares a column against another column (raw, not a bound parameter):
+
+```php
+DB::table('post')
+    ->select('post.*')
+    ->join('user')
+    ->onColumn('post.author_id', 'user.id')
+    ->whereColumn('post.published_at', '<', 'post.updated_at')
+    ->get();
+```
+
+### whereRaw()
+
+Injects a raw SQL fragment into the WHERE clause:
+
+```php
+DB::table('user')
+    ->select()
+    ->whereRaw('YEAR(created_at) = ?', [2024])
+    ->get();
+```
+
+### OR conditions
+
+Insert an `OR` operator between any two conditions with `or()`:
+
+```php
+DB::table('user')
+    ->select()
+    ->whereLike('name', '%bob%')
+    ->or()
+    ->whereLike('email', '%bob%')
+    ->get();
+```
+
+Use `and()` explicitly when needed inside closures:
+
+```php
+DB::table('user')->select()->where(function ($q) {
+    $q->where('status', 'active')->and()->where('role', 'admin');
+})->get();
+```
+
+## Joins
+
+```php
+// INNER JOIN (default)
+DB::table('post')
+    ->select('post.*', 'user.name as author_name')
+    ->join('user')
+    ->on('post.author_id', 'user.id')
+    ->get();
+
+// LEFT / RIGHT / INNER join variants
+->leftJoin('category')
+->rightJoin('tag')
+->innerJoin('comment')
+```
+
+### on() and onColumn()
+
+`on()` sets the JOIN condition. Pass a raw string or a `column = value` pair:
+
+```php
+->join('user')->on('post.author_id', 'user.id')
+```
+
+`onColumn()` is sugar that wraps the second argument in `DB::flat()` so both sides are treated as column names, not bound parameters:
+
+```php
+->join('user')->onColumn('post.author_id', 'user.id')
+```
+
+## Grouping and HAVING
+
+```php
+DB::table('order')
+    ->select('status', DB::flat('COUNT(*) as total'))
+    ->group('status')
+    ->having('total', '>', 5)
+    ->get();
+```
+
+## Ordering
+
+```php
+->orderBy('name', 'ASC')     // quoted column
+->orderAsc('created_at')     // shorthand
+->orderDesc('created_at')    // shorthand
+->orderByRaw('RAND()')       // raw expression
+```
+
+## Limit and offset
+
+```php
+->limit(0, 10)           // LIMIT 0,10  (offset, count)
+->pagination(10, 2)      // page 2 of 10-per-page: LIMIT 10,10
+```
+
+`pagination($max, $pag)` computes the SQL `LIMIT` offset from a page number.
+
+## Inserting rows
+
+```php
+// Single row — executes immediately
+DB::table('user')->insert([
+    'name'  => 'Alice',
+    'email' => 'alice@example.com',
+]);
+
+// Multiple rows in one statement
+DB::table('user')->insert([
+    ['name' => 'Alice', 'email' => 'alice@example.com'],
+    ['name' => 'Bob',   'email' => 'bob@example.com'],
+]);
+
+// Defer execution (returns $this)
+$table = DB::table('user')->insert($data, false);
+```
+
+## Updating rows
+
+```php
+DB::table('user')
+    ->update(['name' => 'Bobby'])
+    ->where('id', 1)
+    ->execute();
+```
+
+## Deleting rows
+
+```php
+DB::table('user')
+    ->delete()
+    ->where('id', 1)
+    ->execute();
+```
+
+<Warning>
+`delete()` without a `where()` will delete every row in the table.
+</Warning>
+
+## Terminal methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `get()` | array | All matching rows. Returns model instances if `model()` is set. |
+| `first()` | array\|Model\|null | First matching row. Applies `LIMIT 0,1`. |
+| `row()` | array\|null | First row as a raw associative array, regardless of model binding. |
+| `rows()` | array | All rows as raw associative arrays. |
+| `exists()` | bool | `true` if at least one row matches. |
+| `execute()` | PDOStatement | Executes the built query and returns the statement. |
+| `sql()` | array | Returns `['sql' => ..., 'params' => [...]]` without executing. |
+
+## DB::flat() in queries
+
+Wrap any value in `DB::flat()` to inject it verbatim into the SQL string without parameter binding:
+
+```php
+// Use a MySQL function as a column value
+DB::table('post')
+    ->update(['published_at' => DB::flat('NOW()')])
+    ->where('id', 42)
+    ->execute();
+
+// Compare two columns
+DB::table('user')
+    ->select()
+    ->where('created_at', '<', DB::flat('updated_at'))
+    ->get();
+```
+
+## Full example
+
+```php
+$results = DB::table('post')
+    ->select('post.id', 'post.title', 'user.name as author')
+    ->join('user')
+    ->onColumn('post.author_id', 'user.id')
+    ->where('post.status', 'published')
+    ->where('post.created_at', '>', '2024-01-01')
+    ->orderDesc('post.created_at')
+    ->pagination(10, 1)
+    ->get();
+```

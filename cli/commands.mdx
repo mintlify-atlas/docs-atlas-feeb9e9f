@@ -1,0 +1,503 @@
+---
+title: "Commands reference"
+description: "Every built-in CLI command with syntax, arguments, defaults, and usage examples."
+---
+
+All commands are run from your project root:
+
+```bash
+php manager <command> [arguments]
+```
+
+---
+
+## Scaffolding
+
+### `new`
+
+Generate a new PHP file from a template.
+
+```bash
+php manager new {type} {name} {name2?}
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `type` | Yes | The kind of file to scaffold. See supported types below. |
+| `name` | Yes | Class name (and file name) to create. Supports sub-paths, e.g. `Admin/UserController`. |
+| `name2` | No | Secondary name used inside the template (e.g. the table name for a model or migration). |
+
+<Note>
+  For `migration` files the final file name is automatically prefixed with a timestamp (`Y_m_d_His`) so migrations run in creation order.
+</Note>
+
+<AccordionGroup>
+  <Accordion title="controller">
+    **Filesystem path:** `app/Controllers/`
+
+    Generates a class that extends `app\Controllers\Controller`.
+
+    ```bash
+    php manager new controller UserController
+    ```
+
+    ```php
+    <?php
+
+    namespace app\Controllers;
+
+    use app\Controllers\Controller;
+
+    class UserController extends Controller{
+        
+    }
+
+    ?>
+    ```
+  </Accordion>
+
+  <Accordion title="model">
+    **Filesystem path:** `app/Models/`
+
+    Generates a class that extends `libs\DB\Model`. Pass the table name as `name2`.
+
+    ```bash
+    php manager new model User users
+    ```
+
+    ```php
+    <?php
+
+    namespace app\Models;
+
+    use libs\DB\Model;
+
+    class User extends Model{
+        
+        protected $table="users";
+        protected $fillable=[
+            
+        ];
+
+    }
+
+    ?>
+    ```
+  </Accordion>
+
+  <Accordion title="migration">
+    **Filesystem path:** `database/migrations/`
+
+    Generates an anonymous class that extends `libs\DB\Migration` with `up()` and `down()` methods. Pass the table name as `name2`.
+
+    ```bash
+    php manager new migration CreateUsersTable users
+    ```
+
+    The file is saved as `database/migrations/2026_03_15_120000_CreateUsersTable.php`.
+
+    ```php
+    <?php
+
+    use libs\DB\Migration;
+
+    return new class extends Migration{
+
+        /**
+         * Run the migrations.
+         */
+        public function up(): void{
+            $this->table('users', function($table){
+                $table->id();
+                $table->timestamps();
+            });
+        }
+
+        /**
+         * Reverse the migrations.
+         */
+        public function down(): void{
+            $this->dropIfExists('users');
+        }
+
+    };
+
+    ?>
+    ```
+  </Accordion>
+
+  <Accordion title="seeder">
+    **Filesystem path:** `database/seeders/`
+
+    Generates a class that extends `libs\DB\Seeder`. Pass the model class name as `name2`.
+
+    ```bash
+    php manager new seeder UserSeeder User
+    ```
+
+    ```php
+    <?php
+
+    namespace database\seeders;
+
+    use libs\DB\Seeder;
+    use app\Models\User;
+
+    class UserSeeder extends Seeder{
+
+        public function run(){
+            User::create([
+                
+            ]);
+        }
+
+    }
+
+    ?>
+    ```
+  </Accordion>
+
+  <Accordion title="middleware">
+    **Filesystem path:** `app/Middlewares/`
+
+    Generates a class that extends `libs\Middle\Middleware` with `handle()`, `terminate()`, and `report()` methods.
+
+    ```bash
+    php manager new middleware AuthMiddleware
+    ```
+
+    ```php
+    <?php
+
+    namespace app\Middlewares;
+
+    use libs\Middle\Middleware;
+    use libs\HTTP\Request;
+
+    class AuthMiddleware extends Middleware{
+
+        public function handle(Request $request, \Closure $next){
+            return $next($request);
+        }
+
+        public function terminate(Request $request, \Closure $response){
+
+        }
+
+        public function report(\Exception $ex){
+
+        }
+
+    }
+
+    ?>
+    ```
+  </Accordion>
+
+  <Accordion title="service">
+    **Filesystem path:** `app/Services/`
+
+    Generates a class that implements `libs\Service\Contract\ServiceImpl`.
+
+    ```bash
+    php manager new service PaymentService
+    ```
+
+    ```php
+    <?php
+
+    namespace app\Services;
+
+    use libs\Service\Contract\ServiceImpl;
+
+    class PaymentService implements ServiceImpl{
+
+        public function handle(){
+
+        }
+
+        public function terminate(){
+
+        }
+
+        public function report($ex){
+            exception($ex);
+        }
+
+    }
+
+    ?>
+    ```
+  </Accordion>
+
+  <Accordion title="validator">
+    **Filesystem path:** `app/Validators/`
+
+    Generates a class that extends the named model (`name2`) and exposes `authorize()` and `rules()` methods. Pass the model class name as `name2`.
+
+    ```bash
+    php manager new validator UserValidator User
+    ```
+
+    ```php
+    <?php
+
+    namespace app\Validators;
+
+    use libs\Validator\Validate;
+    use app\Models\User;
+
+    class UserValidator extends User{
+
+        public function authorize($data, $rule){
+            $data = array_intersect_key($data, $this->getFillableArray());
+            return Validate::make($data, $this->rules()[$rule]);
+        }
+
+        public function rules(){
+            return [
+                'store' => [],
+                'update' => [],
+                'delete' => []
+            ];
+        }
+
+    }
+
+    ?>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Project setup
+
+### `create`
+
+Create the initial folder structure and files defined in `config/filesystem.php` under the `create` key.
+
+```bash
+php manager create
+```
+
+By default this generates `config.env` from `config.env.example`. You can extend the `create` key in `config/filesystem.php` to add any folders or files that should exist before the application runs.
+
+```php
+// config/filesystem.php
+'create' => [
+    'folders' => [
+        'storage/app/uploads',
+    ],
+    'files' => [
+        [
+            'path'    => 'config.env',
+            'content' => file_get_contents('config.env.example'),
+        ],
+    ],
+],
+```
+
+<Note>
+  `create` is idempotent — it skips any folder or file that already exists, so it is safe to run multiple times.
+</Note>
+
+---
+
+## Database
+
+### `migrate`
+
+Run all pending `up()` migration methods in `database/migrations/`.
+
+```bash
+php manager migrate
+```
+
+### `migrate rollback`
+
+Reverse migrations by running every `down()` method.
+
+```bash
+php manager migrate rollback
+```
+
+<Warning>
+  `rollback` runs the `down()` method for every migration, which typically drops tables. Make sure you have a backup before rolling back in production.
+</Warning>
+
+---
+
+### `seeder`
+
+Run database seeders via `database\seeders\DatabaseSeeder`.
+
+```bash
+php manager seeder {name?}
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `name` | No | `null` | Name of a specific seeder to run. When omitted, `DatabaseSeeder::run()` decides which seeders to execute. |
+
+**Run all seeders:**
+
+```bash
+php manager seeder
+```
+
+**Run a specific seeder:**
+
+```bash
+php manager seeder UserSeeder
+```
+
+---
+
+### `db export`
+
+Export the configured database to a `.sql` backup file using `mysqldump`.
+
+```bash
+php manager db export {name?} {table?}
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `name` | No | `backup` | Base name of the output file (without `.sql`). |
+| `table` | No | _(whole database)_ | Limit the export to a single table. |
+
+Backup files are saved to the path configured at `filesystem.database.backups`.
+
+**Export the full database:**
+
+```bash
+php manager db export
+# → database/backups/backup.sql
+```
+
+**Export with a custom name:**
+
+```bash
+php manager db export prod_2026_03_15
+# → database/backups/prod_2026_03_15.sql
+```
+
+**Export a single table:**
+
+```bash
+php manager db export users_backup users
+# → database/backups/users_backup.sql  (users table only)
+```
+
+---
+
+### `db import`
+
+Display the path of the backup file to import.
+
+```bash
+php manager db import {name?}
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `name` | No | `backup` | Base name of the file to import (without `.sql`). |
+
+<Info>
+  Automatic import is not yet implemented. The command prints the resolved file path so you can run the import manually via your database client.
+</Info>
+
+```bash
+php manager db import prod_2026_03_15
+# Output: Import the file database/backups/prod_2026_03_15.sql manually (automatic pending)
+```
+
+---
+
+### `db show`
+
+List all backup files in the backups directory.
+
+```bash
+php manager db show
+```
+
+Each file path is printed to the console using `$console->info()`.
+
+---
+
+### `db remove`
+
+Delete a backup file.
+
+```bash
+php manager db remove {name?}
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `name` | No | `backup` | Base name of the file to delete (without `.sql`). |
+
+```bash
+php manager db remove prod_2026_03_15
+# Deletes: database/backups/prod_2026_03_15.sql
+```
+
+<Warning>
+  Deletion is permanent. There is no confirmation prompt.
+</Warning>
+
+---
+
+## Development
+
+### `server`
+
+Start the built-in PHP development server bound to `127.0.0.1`.
+
+```bash
+php manager server {port?}
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `port` | No | `8000` | Port to listen on. |
+
+The server serves files from the directory configured at `filesystem.public.path` (`public/` by default).
+
+```bash
+# Start on the default port
+php manager server
+
+# Start on a custom port
+php manager server 9000
+```
+
+<Tip>
+  The server only binds to `127.0.0.1` (localhost). It is not accessible from other machines on your network and is intended for local development only.
+</Tip>
+
+---
+
+### `scss`
+
+Watch SCSS source files and compile them to CSS whenever a file changes.
+
+```bash
+php manager scss
+```
+
+| Config key | Default value | Description |
+|---|---|---|
+| `filesystem.scss.path_input` | `resources/scss` | Source SCSS directory. |
+| `filesystem.scss.path_output` | `public/css` | Output CSS directory. |
+
+```bash
+php manager scss
+# Runs: sass --watch resources/scss:public/css
+```
+
+<Info>
+  This command requires the [Sass CLI](https://sass-lang.com/install) (`sass`) to be installed and available on your system `PATH`.
+</Info>
