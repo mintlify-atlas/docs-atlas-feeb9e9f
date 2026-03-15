@@ -1,0 +1,110 @@
+{
+  "projectType": "framework",
+  "projectName": "MVC PHP",
+  "projectDescription": "A lightweight PHP MVC framework with routing, an Eloquent-inspired ORM, middleware, authentication, templating, WebSocket server, and a CLI manager for scaffolding.",
+  "theme": "mint",
+  "primaryColor": "#4F46E5",
+  "lightColor": "#6366F1",
+  "darkColor": "#3730A3",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core/routing",
+              "core/controllers",
+              "core/middleware",
+              "core/views"
+            ]
+          },
+          {
+            "group": "Database",
+            "pages": [
+              "database/overview",
+              "database/models",
+              "database/query-builder",
+              "database/migrations",
+              "database/seeders",
+              "database/relations"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "auth/overview",
+              "auth/session-auth",
+              "auth/api-tokens"
+            ]
+          },
+          {
+            "group": "Libraries",
+            "pages": [
+              "libs/http-client",
+              "libs/validation",
+              "libs/session",
+              "libs/storage",
+              "libs/socket-server",
+              "libs/email"
+            ]
+          },
+          {
+            "group": "CLI Manager",
+            "pages": [
+              "cli/overview",
+              "cli/commands"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "MVC architecture with routing, controllers, and view templating",
+    "Eloquent-inspired ORM with HasOne, HasMany, and ManyToMany relations",
+    "Database migrations and seeders system",
+    "Session-based and API token authentication with PAM support",
+    "Middleware pipeline for route protection",
+    "CLI manager for scaffolding controllers, models, migrations, and more",
+    "Built-in HTTP client (Guzzle-backed) for outbound requests",
+    "WebSocket server for real-time features",
+    "Form validation with custom rules",
+    "SCSS compilation support",
+    "File storage and QR code generation utilities"
+  ],
+  "publicApiSurface": [
+    "Route::get / post / put / delete",
+    "Route::middleware()",
+    "Route::group()",
+    "Route::name()",
+    "Model::find()",
+    "Model::all()",
+    "Model::create()",
+    "Model::paginate()",
+    "Model::search()",
+    "Model::with()",
+    "Model::hasOne / hasMany / manyToMany",
+    "DB::table()",
+    "DB::execute()",
+    "DB::transation()",
+    "Schema::table()",
+    "Schema::tableIfNotExists()",
+    "Schema::dropIfExists()",
+    "Auth::instance()",
+    "HTTP::get / post / put / delete",
+    "Request::input / get / post / put / all",
+    "Manager::command()",
+    "Manager::call()"
+  ]
+}
